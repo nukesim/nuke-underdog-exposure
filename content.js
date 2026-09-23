@@ -24,5 +24,5 @@ function badge(count,total){const b=document.createElement("span");b.dataset.nuk
 async function addDraftBadges(){if(!location.pathname.includes("/draft/"))return;document.querySelectorAll("[data-nuke-exposure]").forEach(x=>x.remove());const ex=await exposureForDraft();if(!ex||ex.needsContest||!ex.total)return;for(const {el,name} of draftPlayerNames()){const count=ex.map.get(name)||0;{const b=badge(count,ex.total);const host=el.parentElement||el;b.classList.add("nuke-inline");host.appendChild(b)}}}
 async function scan(){if(running||!alive)return 0;running=true;try{const n=await repairAndSync();await addDraftBadges();return n}finally{running=false}}
 try{chrome.runtime.onMessage.addListener((msg,sender,sendResponse)=>{if(msg?.type==="NUKE_FORCE_SCAN"){scan().then(n=>sendResponse({ok:true,captured:n}));return true}})}catch(e){alive=false}
-const obs=new MutationObserver(()=>{if(!alive){obs.disconnect();return}clearTimeout(timer);timer=setTimeout(scan,500)});obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(scan,600);setInterval(scan,3000);
+const obs=new MutationObserver(()=>{if(!alive){obs.disconnect();return}clearTimeout(timer);timer=setTimeout(scan,250)});obs.observe(document.documentElement,{childList:true,subtree:true});setTimeout(scan,150);
 })();
