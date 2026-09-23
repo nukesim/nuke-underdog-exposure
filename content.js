@@ -34,7 +34,9 @@ function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
  for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
- const surname=new Map();\n for(const [name,count] of map){const key=surnameKey(name);if(!key)continue;const prev=surname.get(key);surname.set(key,prev===undefined?count:null)}\n cached.stats={total:ds.length,map,surname};
+ const surname=new Map();
+ for(const [name,count] of map){const key=surnameKey(name);if(!key)continue;const prev=surname.get(key);surname.set(key,prev===undefined?count:null)}
+ cached.stats={total:ds.length,map,surname};
 }
 async function hydrate(){
  const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
