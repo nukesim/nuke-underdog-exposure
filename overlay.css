@@ -45,3 +45,10 @@
 .nuke-next-tag.qb-stack{color:#38d996!important;border:1px solid rgba(56,217,150,.55)!important}
 .nuke-next-tag.bringback{color:#43b9ff!important;border:1px solid rgba(67,185,255,.5)!important}
 .nuke-next-tag.same-team{color:#f4bd31!important;border:1px solid rgba(244,189,49,.5)!important}
+
+
+/* NUKE NEXT decision columns: roster fit first, historical exposure last. */
+.nuke-next-metrics{flex:0 0 auto!important;display:grid!important;grid-template-columns:34px 42px 38px!important;gap:5px!important;text-align:right!important}
+.nuke-next-metrics>div{line-height:1.05!important}
+.nuke-next-metrics b{display:block!important;color:#fff!important;font-size:11px!important}
+.nuke-next-metrics span{display:block!important;color:#6f8799!important;font-size:7px!important;font-weight:800!important;letter-spacing:.25px!important}
