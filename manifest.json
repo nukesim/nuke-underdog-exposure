@@ -1,20 +1,19 @@
 {
   "manifest_version": 3,
   "name": "NUKE Underdog Exposure",
-  "version": "0.1.0",
-  "description": "Track NFL Daily Draft player and combo exposure on Underdog.",
+  "version": "0.2.0",
+  "description": "Real-time tournament-specific NFL Daily Draft exposure on Underdog.",
   "permissions": ["storage", "tabs"],
   "host_permissions": ["https://underdogfantasy.com/*", "https://*.underdogfantasy.com/*"],
   "action": {
     "default_title": "NUKE Exposure",
     "default_popup": "popup.html"
   },
-  "background": {
-    "service_worker": "background.js"
-  },
+  "background": { "service_worker": "background.js" },
   "content_scripts": [{
     "matches": ["https://underdogfantasy.com/*", "https://*.underdogfantasy.com/*"],
     "js": ["content.js"],
+    "css": ["overlay.css"],
     "run_at": "document_idle"
   }]
 }
