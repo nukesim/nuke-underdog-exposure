@@ -30,3 +30,18 @@
   line-height:1.15!important;
   transform:translateY(-1px)!important;
 }
+
+
+/* NUKE NEXT: live, available-player decision support */
+.nuke-next-picks{padding:5px 0 8px!important;color:#9fb2c2!important;font-size:10px!important;font-weight:700!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.nuke-next-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;padding:7px 0!important;border-top:1px solid #1d2a35!important}
+.nuke-next-main{min-width:0!important;display:flex!important;align-items:center!important;gap:6px!important;flex-wrap:wrap!important}
+.nuke-next-main>b{font-size:12px!important;color:#fff!important}
+.nuke-next-main>span{flex-basis:100%!important;color:#9fb2c2!important;font-size:10px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.nuke-next-exp{flex:0 0 auto!important;text-align:right!important;line-height:1.05!important}
+.nuke-next-exp>b{display:block!important;color:#fff!important;font-size:12px!important}
+.nuke-next-exp>span{color:#6f8799!important;font-size:8px!important;font-weight:700!important}
+.nuke-next-tag{font-style:normal!important;font-size:8px!important;font-weight:800!important;padding:2px 4px!important;border-radius:4px!important;letter-spacing:.3px!important}
+.nuke-next-tag.qb-stack{color:#38d996!important;border:1px solid rgba(56,217,150,.55)!important}
+.nuke-next-tag.bringback{color:#43b9ff!important;border:1px solid rgba(67,185,255,.5)!important}
+.nuke-next-tag.same-team{color:#f4bd31!important;border:1px solid rgba(244,189,49,.5)!important}
