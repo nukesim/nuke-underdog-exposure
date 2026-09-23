@@ -153,8 +153,12 @@ function draftedNFL(){
 function correlationTag(meta,drafted){
  const qbs=new Set(drafted.filter(x=>x.pos==='QB').map(x=>x.team));
  const qbOpps=new Set(drafted.filter(x=>x.pos==='QB').map(x=>x.opp));
+ const passCatchTeams=new Set(drafted.filter(x=>['WR','TE'].includes(x.pos)).map(x=>x.team));
  const teams=new Set(drafted.map(x=>x.team));
- if(qbs.has(meta.team)&&meta.pos!=='QB')return {kind:'qb-stack',text:'QB STACK'};
+ // Forward stack: after drafting a QB, visually prioritize his WR/TE.
+ if(['WR','TE'].includes(meta.pos)&&qbs.has(meta.team))return {kind:'qb-stack',text:'QB STACK'};
+ // Reverse stack: after drafting a WR/TE, visually prioritize that team's QB.
+ if(meta.pos==='QB'&&passCatchTeams.has(meta.team))return {kind:'qb-stack',text:'STACK QB'};
  if(qbOpps.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'bringback',text:'BRING-BACK'};
  if(teams.has(meta.team)&&!qbs.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'same-team',text:'SAME TEAM'};
  return null;
@@ -174,7 +178,7 @@ function badge(count,total,maxCount){
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
  const st=cached.stats;if(!st)return;
- document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team'));
+ document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team')); document.querySelectorAll('[data-nuke-stack]').forEach(el=>{el.classList.remove('nuke-stack-row');delete el.dataset.nukeStack});
  const rows=findPlayerRows();
  const drafted=cached.sport==='NFL'?draftedNFL():[];
  const counts=rows.map(({name})=>exposureCount(name,st));
@@ -191,7 +195,7 @@ function renderBadges(){
   // Keep exposure on the player-name line instead of between name and team/game metadata.
   // Attach immediately after the leaf name node so Underdog's second line stays untouched.
   el.insertAdjacentElement('afterend',b);
-  if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
+  if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);if(tag.kind==='qb-stack'){row.classList.add('nuke-stack-row');row.dataset.nukeStack='1'}el.title=tag.text+' · NUKE stacking correlation'}}
  }
 }
 function draftedNames(){return [...new Set(draftedNFL().map(x=>x.name).filter(Boolean))]}
