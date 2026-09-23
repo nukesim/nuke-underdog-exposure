@@ -13,3 +13,10 @@
 .nuke-combo-row{display:flex!important;justify-content:space-between!important;gap:12px!important;padding:6px 0!important;border-top:1px solid #1d2a35!important}
 .nuke-combo-row span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 .nuke-combo-row b{flex:0 0 auto!important;color:#dce8f1!important}
+
+
+/* Exposure heat scale: relative to the highest-owned visible player */
+.nuke-exposure-badge.nuke-exposure-green{border-color:#38d996!important;box-shadow:0 0 4px rgba(56,217,150,.35)!important}
+.nuke-exposure-badge.nuke-exposure-yellow{border-color:#f5df00!important}
+.nuke-exposure-badge.nuke-exposure-orange{border-color:#f28c28!important}
+.nuke-exposure-badge.nuke-exposure-red{border-color:#ef5350!important}
