@@ -115,6 +115,31 @@ function findPlayerRows(){
  }
  return rows;
 }
+function nflRowMeta(row){
+ const t=clean(row.innerText);
+ const pos=t.match(/\b(QB|RB|WR|TE)\d*\b/i)?.[1]?.toUpperCase()||'';
+ const game=t.match(/\b([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})\b/i);
+ return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||''};
+}
+function draftedNFL(){
+ const root=playerPoolRoot(),out=[];const seen=new Set();
+ for(const el of document.querySelectorAll('div')){
+  if(root?.contains(el)||el.offsetParent===null||el.childElementCount>8)continue;
+  const r=el.getBoundingClientRect();if(r.left<innerWidth*.58||r.width<180||r.width>500||r.height<35||r.height>105)continue;
+  const m=nflRowMeta(el);if(!m.pos||!m.team)continue;
+  const key=m.pos+'|'+m.team+'|'+Math.round(r.top);if(!seen.has(key)){seen.add(key);out.push(m)}
+ }
+ return out;
+}
+function correlationTag(meta,drafted){
+ const qbs=new Set(drafted.filter(x=>x.pos==='QB').map(x=>x.team));
+ const qbOpps=new Set(drafted.filter(x=>x.pos==='QB').map(x=>x.opp));
+ const teams=new Set(drafted.map(x=>x.team));
+ if(qbs.has(meta.team)&&meta.pos!=='QB')return {kind:'qb-stack',text:'QB STACK'};
+ if(qbOpps.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'bringback',text:'BRING-BACK'};
+ if(teams.has(meta.team)&&!qbs.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'same-team',text:'SAME TEAM'};
+ return null;
+}
 function exposureCount(name,st){for(const key of aliasKeys(name))if(st.map.has(key))return st.map.get(key);return 0}
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
@@ -123,9 +148,10 @@ function badge(count,total){
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
  const st=cached.stats;if(!st)return;
- document.querySelectorAll('[data-nuke-exposure]').forEach(b=>b.remove());
+ document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove());
  const rows=findPlayerRows();
- for(const {name,el} of rows){
+ const drafted=cached.sport==='NFL'?draftedNFL():[];
+ for(const {name,el,row} of rows){
   const count=exposureCount(name,st);
   const b=badge(count,st.total);
   b.style.marginLeft='6px';
@@ -134,6 +160,7 @@ function renderBadges(){
   b.style.height='auto';
   b.style.flex='0 0 auto';
   el.insertAdjacentElement('afterend',b);
+  if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const x=document.createElement('span');x.dataset.nukeCorrelation='1';x.className='nuke-correlation '+tag.kind;x.textContent=tag.text;x.title=tag.kind==='qb-stack'?'Same team as your drafted QB':tag.kind==='bringback'?'Opponent of your drafted QB — potential game stack':'Same team as another drafted skill player without its QB';b.insertAdjacentElement('afterend',x)}}
  }
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges()}finally{scanBusy=false}}},ms)}
