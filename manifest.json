@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "NUKE Underdog Exposure",
-  "version": "0.5.0",
-  "description": "Instant live NFL Daily Draft exposure by tournament or overall, with in-draft player badges.",
+  "version": "0.6.0",
+  "description": "Fast live Underdog exposure by sport, tournament, or overall.",
   "permissions": [
     "storage",
     "tabs"
