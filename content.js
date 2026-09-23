@@ -5,7 +5,8 @@ let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={draft
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
-const tokens=s=>norm(s).split(' ').filter(Boolean);\nconst surnameKey=s=>{const a=tokens(s);if(!a.length)return '';return /^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1?a.at(-2):a.at(-1)};
+const tokens=s=>norm(s).split(' ').filter(Boolean);
+const surnameKey=s=>{const a=tokens(s);if(!a.length)return '';return /^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1?a.at(-2):a.at(-1)};
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function harvestStructured(root){
