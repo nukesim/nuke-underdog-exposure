@@ -8,6 +8,27 @@ const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -
 const tokens=s=>norm(s).split(/\\s+/).filter(Boolean);
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
+function harvestStructured(root){
+ const found=[];const seen=new WeakSet();
+ const walk=(v,depth=0)=>{if(!v||depth>9)return;if(typeof v!=='object')return;if(seen.has(v))return;seen.add(v);
+  if(Array.isArray(v)){for(const x of v)walk(x,depth+1);return}
+  const contest=clean(v.tournament_name||v.contest_name||v.title||v.name||'');
+  const sport=clean(v.sport_name||v.sport||v.sport_id||'').toUpperCase();
+  const roster=v.players||v.roster||v.draft_picks||v.picks;
+  const draftId=String(v.draft_id||v.draftId||v.entry_id||v.id||'');
+  if(contest&&Array.isArray(roster)&&roster.length>=2){
+   const players=roster.map(p=>({id:String(p?.player_id||p?.id||''),name:clean(p?.player_name||p?.name||p?.full_name||p?.appearance?.name||'')})).filter(p=>p.name);
+   if(players.length>=2)found.push({draftId:draftId||[contest,...players.map(p=>norm(p.name)).sort()].join('|'),sport:sport||'UNKNOWN',format:'Daily Draft',contest:contestNorm(contest),players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
+  }
+  for(const x of Object.values(v))walk(x,depth+1);
+ };walk(root);return found
+}
+async function ingestStructured(data){
+ const found=harvestStructured(data);if(!found.length)return;
+ const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
+ for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();scheduleRender(0)
+}
+window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data)});
 function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
