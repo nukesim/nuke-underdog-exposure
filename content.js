@@ -5,7 +5,7 @@ let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={draft
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
-const tokens=s=>norm(s).split(/\\s+/).filter(Boolean);
+const tokens=s=>norm(s).split(' ').filter(Boolean);
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function harvestStructured(root){
