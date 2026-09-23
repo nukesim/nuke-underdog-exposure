@@ -208,10 +208,20 @@ function pairCount(a,b){
  return 0;
 }
 function candidateSignals(name,meta,drafted,total){
- const rels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count);
+ const allRels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).sort((a,b)=>b.count-a.count);
+ const rels=allRels.filter(x=>x.count>0);
  const exposure=exposureCount(name,cached.stats);
  const tag=correlationTag(meta,drafted);
- return {name,meta,rels,exposure,total,tag,covered:rels.length,sum:rels.reduce((s,x)=>s+x.count,0),best:rels[0]?.count||0};
+ const covered=rels.length,sum=rels.reduce((s,x)=>s+x.count,0),best=rels[0]?.count||0;
+ // FIT is deliberately driven by how often this candidate has appeared WITH the
+ // players already on this roster. Exposure is displayed separately and is not
+ // allowed to make a highly-owned but unrelated player rank first.
+ const pickCount=Math.max(1,drafted.length);
+ const avgPairRate=total?sum/(total*pickCount):0;
+ const coverageRate=covered/pickCount;
+ const corrBonus=tag?.kind==='qb-stack'?22:tag?.kind==='bringback'?14:tag?.kind==='same-team'?5:0;
+ const fit=Math.min(100,Math.round(avgPairRate*65+coverageRate*25+corrBonus));
+ return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit};
 }
 function availableCandidates(){
  const drafted=draftedNFL();
@@ -232,7 +242,7 @@ function renderComboPanel(){
   return;
  }
  const candidates=availableCandidates().sort((a,b)=>
-  b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)
+  b.fit-a.fit||b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)
  ).slice(0,10);
  const picked=drafted.map(x=>x.name).join(' + ');
  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
@@ -242,7 +252,8 @@ function renderComboPanel(){
    const rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
    const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
    const relationship=rel||'No prior combo with my picks';
-   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+'<span>'+relationship+'</span></div><div class="nuke-next-exp"><b>'+pct+'%</b><span>EXP</span></div></div>';
+   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+'<span>'+relationship+'</span></div>'+
+    '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
