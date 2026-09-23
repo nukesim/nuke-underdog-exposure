@@ -1,21 +1,21 @@
 (() => {
 'use strict';
 const clean=s=>(s||'').replace(/\s+/g,' ').trim();
-let alive=true, scanTimer=null, scanBusy=false, cached={drafts:[],selected:'',stats:null};
+let alive=true, scanTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null};
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function computeStats(){
- const ds=cached.drafts.filter(d=>cached.selected==='ALL'||d.contest===cached.selected);
+ const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
  for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
  cached.stats={total:ds.length,map};
 }
 async function hydrate(){
- const x=await safe(()=>chrome.storage.local.get({drafts:[],lastSelectedContest:'ALL'})); if(!x)return;
- cached.drafts=x.drafts||[]; cached.selected=x.lastSelectedContest||'ALL'; computeStats(); scheduleRender(0);
+ const x=await safe(()=>chrome.storage.local.get({drafts:[],lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
+ cached.drafts=x.drafts||[]; cached.sport=x.lastSelectedSport||'ALL'; cached.selected=x.lastSelectedContest||'ALL'; computeStats(); scheduleRender(0);
 }
 function rosterStrings(){
  const out=[];
@@ -72,7 +72,7 @@ function findPlayerRows(){
 }
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
- b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure for '+cached.selected; return b;
+ b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
 }
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
@@ -92,7 +92,7 @@ obs.observe(document.documentElement,{childList:true,subtree:true});
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
  if(changes.drafts)cached.drafts=changes.drafts.newValue||[];
- if(changes.lastSelectedContest)cached.selected=changes.lastSelectedContest.newValue||'ALL';
+ if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';\n if(changes.lastSelectedContest)cached.selected=changes.lastSelectedContest.newValue||'ALL';
  computeStats();scheduleRender(0);
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
