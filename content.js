@@ -98,7 +98,9 @@ obs.observe(document.documentElement,{childList:true,subtree:true});
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
  if(changes.drafts)cached.drafts=changes.drafts.newValue||[];
- if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';\n if(changes.exposureScope)cached.scope=changes.exposureScope.newValue||{sport:'ALL',contest:'ALL'};\n if(changes.lastSelectedContest&&!changes.exposureScope)cached.scope.contest=changes.lastSelectedContest.newValue||'ALL';
+ if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';
+ if(changes.exposureScope)cached.sport=changes.exposureScope.newValue?.sport||'ALL';cached.selected=changes.exposureScope.newValue?.contest||'ALL';
+ if(changes.lastSelectedContest&&!changes.exposureScope)cached.selected=changes.lastSelectedContest.newValue||'ALL';
  computeStats();scheduleRender(0);
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
