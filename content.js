@@ -125,21 +125,28 @@ function nflRowMeta(row){
 }
 function draftedNFL(){
  const root=playerPoolRoot(),out=[],seen=new Set();
- // Parse the roster panel as text instead of guessing DOM proximity. Underdog reflows
- // player-name/game nodes, but their roster text order is stable: POS, name, TEAM vs/@ OPP.
+ // Find the FULL roster panel, not a nested QB/RB/WR/TE subsection. Nested
+ // sections were causing NUKE NEXT to see only the currently visible position(s).
  const boxes=[...document.querySelectorAll('div')].filter(el=>{
   if(el.offsetParent===null||root?.contains(el))return false;
   const r=el.getBoundingClientRect(),t=el.innerText||'';
-  return r.left>innerWidth*.58&&r.width>220&&r.height>120&&/\b(QB|RB|WR|TE)\b/.test(t)&&/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/i.test(t);
- }).sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height-b.getBoundingClientRect().width*b.getBoundingClientRect().height);
- const box=boxes[0];if(!box)return out;
+  if(r.left<innerWidth*.68||r.width<240||r.width>520||r.height<180)return false;
+  const games=t.match(/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/gi)||[];
+  return games.length>0&&/\b(QB|RB|WR|TE)\b/.test(t);
+ }).map(el=>{
+  const t=el.innerText||'';
+  const games=(t.match(/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/gi)||[]).length;
+  const heads=(t.match(/(?:^|\n)(QB|RB|WR|TE)(?:\n|$)/g)||[]).length;
+  return {el,score:games*20+heads*5+Math.min(10,(el.innerText||'').split('\n').length/10)};
+ }).sort((a,b)=>b.score-a.score||b.el.getBoundingClientRect().height-a.el.getBoundingClientRect().height);
+ const box=boxes[0]?.el;if(!box)return out;
  const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);
  let pos='';
  for(let i=0;i<lines.length;i++){
   if(/^(QB|RB|WR|TE)$/i.test(lines[i])){pos=lines[i].toUpperCase();continue}
   const m=lines[i].match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);if(!m||!pos)continue;
   let name='';
-  for(let j=i-1;j>=Math.max(0,i-4);j--){
+  for(let j=i-1;j>=Math.max(0,i-5);j--){
    const x=lines[j];
    if(/^(QB|RB|WR|TE)$/i.test(x))break;
    if(x.length>=4&&x.length<=45&&/^[A-Za-zÀ-ÿ.' -]+$/.test(x)&&!/^(ADP|Pick|Projected)$/i.test(x)){name=x;break}
