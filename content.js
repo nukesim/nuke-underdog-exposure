@@ -34,7 +34,9 @@ function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
  for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
- cached.stats={total:ds.length,map};
+ const pairs=new Map();
+ for(const d of ds){const names=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){const key=[names[i],names[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');pairs.set(key,(pairs.get(key)||0)+1)}}
+ cached.stats={total:ds.length,map,pairs};
 }
 async function hydrate(){
  const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
@@ -175,7 +177,20 @@ function renderBadges(){
   if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
  }
 }
-function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges()}finally{scanBusy=false}}},ms)}
+function renderComboPanel(){
+ if(!location.pathname.includes('/draft/')||!cached.stats)return;
+ let panel=document.getElementById('nuke-combo-panel');
+ const queueTitle=[...document.querySelectorAll('*')].find(el=>el.childElementCount===0&&/^Queue(?:\s*\d+)?$/i.test(clean(el.textContent))&&el.offsetParent!==null);
+ if(!queueTitle)return;
+ let host=queueTitle.parentElement;
+ for(let i=0;i<3&&host;i++){const r=host.getBoundingClientRect();if(r.width>350&&r.width<800)break;host=host.parentElement}
+ if(!host)return;
+ if(!panel){panel=document.createElement('section');panel.id='nuke-combo-panel';host.insertAdjacentElement('afterend',panel)}
+ const total=cached.stats.total||0;
+ const top=[...cached.stats.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,8);
+ panel.innerHTML='<div class="nuke-combo-head"><b>NUKE COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
+}
+function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
 const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 
