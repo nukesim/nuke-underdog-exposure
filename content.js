@@ -148,7 +148,7 @@ function badge(count,total){
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
  const st=cached.stats;if(!st)return;
- document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove());
+ document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team'));
  const rows=findPlayerRows();
  const drafted=cached.sport==='NFL'?draftedNFL():[];
  for(const {name,el,row} of rows){
@@ -160,7 +160,7 @@ function renderBadges(){
   b.style.height='auto';
   b.style.flex='0 0 auto';
   el.insertAdjacentElement('afterend',b);
-  if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const x=document.createElement('span');x.dataset.nukeCorrelation='1';x.className='nuke-correlation '+tag.kind;x.textContent=tag.text;x.title=tag.kind==='qb-stack'?'Same team as your drafted QB':tag.kind==='bringback'?'Opponent of your drafted QB — potential game stack':'Same team as another drafted skill player without its QB';b.insertAdjacentElement('afterend',x)}}
+  if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
  }
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges()}finally{scanBusy=false}}},ms)}
