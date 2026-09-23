@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const clean=s=>(s||'').replace(/\s+/g,' ').trim();
-let alive=true, scanTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null};
+let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null};
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
@@ -30,7 +30,7 @@ function rosterStrings(){
  }
  return [...new Set(out)];
 }
-function detectSport(){const t=(document.body.innerText||'').toUpperCase();for(const s of ['NFL','NBA','MLB','NHL','WNBA','PGA','MMA','CFB','CBB','SOCCER','TENNIS'])if(new RegExp('\\\\b'+s+'\\\\b').test(t))return s;return 'UNKNOWN'}\nfunction detectCompletedContest(){
+function detectCompletedContest(){
  const projected=[...document.querySelectorAll('*')].find(el=>/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
  if(projected){let box=projected;for(let i=0;i<12&&box;i++,box=box.parentElement){const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);const title=lines.find(x=>x.length>2&&x.length<90&&!/Projected|Entry|Prizes?|Your teams?|Completed|Upcoming|Live/i.test(x)&&!/^\$|^\d/.test(x));if(title)return contestNorm(title)}}
  return '';
