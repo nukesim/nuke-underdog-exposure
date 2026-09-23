@@ -20,32 +20,36 @@ async function hydrate(){
 function rosterStrings(){
  const out=[];
  for(const el of document.querySelectorAll('*')){
-  if(el.children.length>4)continue;
+  if(el.children.length>8)continue;
   const lines=(el.innerText||'').split('\n').map(clean).filter(Boolean);
-  for(let i=0;i<lines.length;i++) if(/^\d+(?:\.\d+)?\s*Projected$/i.test(lines[i])){
-   const n=lines[i+1]||''; if((n.match(/,/g)||[]).length===5)out.push(n);
+  for(let i=0;i<lines.length;i++)if(/^\d+(?:\.\d+)?\s*Projected$/i.test(lines[i])){
+   const n=lines[i+1]||'';const ps=n.split(',').map(clean).filter(Boolean);
+   if(ps.length>=2&&ps.length<=12)out.push(n);
   }
  }
  return [...new Set(out)];
 }
 function detectCompletedContest(){
- const text=document.body.innerText||'';
- const known=[...new Set(cached.drafts.map(d=>d.contest).filter(Boolean))];
- for(const k of known) if(text.includes(k)) return k;
- const m=text.match(/Battle Royale\s*-\s*Week\s*\d+|The Hurry Up|Prime Time Da Bomb|The PTP Playbook/i);
- return m?contestNorm(m[0]):'';
+ const projected=[...document.querySelectorAll('*')].find(el=>/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
+ if(projected){let box=projected;for(let i=0;i<12&&box;i++,box=box.parentElement){const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);const title=lines.find(x=>x.length>2&&x.length<90&&!/Projected|Entry|Prizes?|Your teams?|Completed|Upcoming|Live/i.test(x)&&!/^\$|^\d/.test(x));if(title)return contestNorm(title)}}
+ return '';
+}
+function detectSport(){
+ const text=' '+clean(document.body.innerText)+' ';
+ const rules=[['NFL',/\bNFL\b|\bQB\b.*\bRB\b.*\bWR\b/i],['NBA',/\bNBA\b|\bPG\b.*\bSG\b.*\bSF\b/i],['MLB',/\bMLB\b|\bP\b.*\bOF\b/i],['NHL',/\bNHL\b|\bC\b.*\bLW\b.*\bRW\b/i],['PGA',/\bPGA\b|\bGOLF\b/i],['MMA',/\bMMA\b|\bUFC\b/i],['WNBA',/\bWNBA\b/i],['CFB',/\bCFB\b|COLLEGE FOOTBALL/i],['CBB',/\bCBB\b|COLLEGE BASKETBALL/i],['SOCCER',/\bSOCCER\b|\bEPL\b|\bMLS\b/i]];
+ for(const [s,re] of rules)if(re.test(text))return s;return 'UNKNOWN';
 }
 async function captureCompleted(){
  if(!location.pathname.includes('/completed/'))return;
  const rosters=rosterStrings(); if(!rosters.length)return;
- const contest=detectCompletedContest(); if(!contest)return;
+ const contest=detectCompletedContest(); if(!contest)return; const sport=detectSport();
  const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];
  const byId=new Map(current.map(d=>[d.draftId,d]));
  for(const r of rosters){
-  const players=r.split(',').map(clean).filter(Boolean).slice(0,6).map(name=>({name}));
-  if(players.length!==6)continue;
+  const players=r.split(',').map(clean).filter(Boolean).map(name=>({name}));
+  if(players.length<2)continue;
   const draftId=[contest,...players.map(p=>norm(p.name)).sort()].join('|');
-  byId.set(draftId,{draftId,sport:'NFL',format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
+  byId.set(draftId,{draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
  }
  const drafts=[...byId.values()];
  await safe(()=>chrome.storage.local.set({drafts}));
