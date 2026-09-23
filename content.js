@@ -229,8 +229,13 @@ function candidateSignals(name,meta,drafted,total){
 }
 function availableCandidates(){
  const drafted=draftedNFL();
+ const hasQB=drafted.some(p=>p.pos==='QB');
  return findPlayerRows().map(({name,row})=>candidateSignals(name,nflRowMeta(row),drafted,cached.stats?.total||0))
-  .filter(x=>!drafted.some(p=>namesMatch(p.name,x.name)));
+  .filter(x=>!drafted.some(p=>namesMatch(p.name,x.name)))
+  // Daily Draft rosters only need one QB. Once one is rostered, NUKE NEXT
+  // must stop recommending every other QB, even when a WR/TE would otherwise
+  // create a reverse-stack signal.
+  .filter(x=>!(hasQB&&x.meta.pos==='QB'));
 }
 function renderComboPanel(){
  if(!location.pathname.includes('/draft/')||!cached.stats)return;
