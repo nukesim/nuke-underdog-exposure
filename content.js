@@ -195,9 +195,28 @@ function renderBadges(){
  }
 }
 function draftedNames(){return [...new Set(draftedNFL().map(x=>x.name).filter(Boolean))]}
-function comboMatchesDrafted(combo,drafted){
- const parts=combo.split(' + ').map(norm);
- return drafted.some(n=>{const a=aliasKeys(n);return parts.some(p=>a.includes(p)||aliasKeys(p).some(x=>a.includes(x)))});
+function namesMatch(a,b){
+ const ak=aliasKeys(a),bk=aliasKeys(b);
+ return ak.some(x=>bk.includes(x))||bk.some(x=>ak.includes(x));
+}
+function pairCount(a,b){
+ if(!cached.stats?.pairs)return 0;
+ for(const [key,n] of cached.stats.pairs){
+  const parts=key.split(' + ');
+  if(parts.length===2&&((namesMatch(a,parts[0])&&namesMatch(b,parts[1]))||(namesMatch(a,parts[1])&&namesMatch(b,parts[0]))))return n;
+ }
+ return 0;
+}
+function candidateSignals(name,meta,drafted,total){
+ const rels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count);
+ const exposure=exposureCount(name,cached.stats);
+ const tag=correlationTag(meta,drafted);
+ return {name,meta,rels,exposure,total,tag,covered:rels.length,sum:rels.reduce((s,x)=>s+x.count,0),best:rels[0]?.count||0};
+}
+function availableCandidates(){
+ const drafted=draftedNFL();
+ return findPlayerRows().map(({name,row})=>candidateSignals(name,nflRowMeta(row),drafted,cached.stats?.total||0))
+  .filter(x=>!drafted.some(p=>namesMatch(p.name,x.name)));
 }
 function renderComboPanel(){
  if(!location.pathname.includes('/draft/')||!cached.stats)return;
@@ -206,11 +225,25 @@ function renderComboPanel(){
  if(!queueTitle)return;
  let host=queueTitle.parentElement;for(let i=0;i<3&&host;i++){const r=host.getBoundingClientRect();if(r.width>350&&r.width<800)break;host=host.parentElement}
  if(!host)return;if(!panel){panel=document.createElement('section');panel.id='nuke-combo-panel';host.insertAdjacentElement('afterend',panel)}
- const total=cached.stats.total||0,drafted=draftedNames();
- let all=[...cached.stats.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
- let top=drafted.length?all.filter(([k])=>comboMatchesDrafted(k,drafted)).slice(0,10):all.slice(0,8);
- const label=drafted.length?'COMBOS WITH MY PICKS':'TOP COMBOS';
- panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · '+label+'</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('')+(top.length?'':'<div class="nuke-combo-empty">No historical combos with your picks yet.</div>');
+ const total=cached.stats.total||0,drafted=draftedNFL();
+ if(!drafted.length){
+  const top=[...cached.stats.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,8);
+  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · TOP COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
+  return;
+ }
+ const candidates=availableCandidates().sort((a,b)=>
+  b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)
+ ).slice(0,10);
+ const picked=drafted.map(x=>x.name).join(' + ');
+ panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
+  '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
+  candidates.map(x=>{
+   const pct=total?Math.round(x.exposure/total*100):0;
+   const rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
+   const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
+   const relationship=rel||'No prior combo with my picks';
+   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+'<span>'+relationship+'</span></div><div class="nuke-next-exp"><b>'+pct+'%</b><span>EXP</span></div></div>';
+  }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
 const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else scheduleRender()});
