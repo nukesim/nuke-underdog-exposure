@@ -15,8 +15,8 @@ function computeStats(){
  cached.stats={total:ds.length,map};
 }
 async function hydrate(){
- const x=await safe(()=>chrome.storage.local.get({drafts:[],lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
- cached.drafts=x.drafts||[]; cached.sport=x.lastSelectedSport||'ALL'; cached.selected=x.lastSelectedContest||'ALL'; computeStats(); scheduleRender(0);
+ const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
+ cached.drafts=x.drafts||[]; cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL'; cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL'; computeStats(); scheduleRender(0);
 }
 function rosterStrings(){
  const out=[];
