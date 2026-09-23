@@ -160,8 +160,15 @@ function correlationTag(meta,drafted){
  return null;
 }
 function exposureCount(name,st){for(const key of aliasKeys(name))if(st.map.has(key))return st.map.get(key);return 0}
-function badge(count,total){
- const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
+function exposureTier(count,total,maxCount){
+ const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
+ if(count>0&&rel>=.75)return 'nuke-exposure-green';
+ if(count>0&&rel>=.50)return 'nuke-exposure-yellow';
+ if(count>0&&rel>=.25)return 'nuke-exposure-orange';
+ return 'nuke-exposure-red';
+}
+function badge(count,total,maxCount){
+ const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge '+exposureTier(count,total,maxCount);
  b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
 }
 function renderBadges(){
@@ -170,9 +177,12 @@ function renderBadges(){
  document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team'));
  const rows=findPlayerRows();
  const drafted=cached.sport==='NFL'?draftedNFL():[];
- for(const {name,el,row} of rows){
-  const count=exposureCount(name,st);
-  const b=badge(count,st.total);
+ const counts=rows.map(({name})=>exposureCount(name,st));
+ const maxCount=Math.max(0,...counts);
+ for(let i=0;i<rows.length;i++){
+  const {name,el,row}=rows[i];
+  const count=counts[i];
+  const b=badge(count,st.total,maxCount);
   b.style.marginLeft='6px';
   b.style.position='static';
   b.style.width='auto';
