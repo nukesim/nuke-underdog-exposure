@@ -178,16 +178,16 @@ function renderBadges(){
  }
 }
 function draftedNames(){
- const root=playerPoolRoot(), names=[];
+ const root=playerPoolRoot(), out=[];
+ const headings=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&!root?.contains(el)&&el.getBoundingClientRect().left>innerWidth*.60&&/^(QB|RB|WR|TE)$/i.test(clean(el.textContent))).map(el=>el.getBoundingClientRect().top).sort((a,b)=>a-b);
  for(const el of document.querySelectorAll('div,span,p')){
   if(el.childElementCount||el.offsetParent===null||root?.contains(el))continue;
   const r=el.getBoundingClientRect();if(r.left<innerWidth*.60)continue;
-  const name=clean(el.textContent);
-  if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
-  const p=el.parentElement, t=clean(p?.innerText||'');
-  if(/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/.test(t)&&/\b(QB|RB|WR|TE)\b/i.test(t))names.push(name);
+  const name=clean(el.textContent);if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
+  const next=[...document.querySelectorAll('div,span,p')].find(x=>x.childElementCount===0&&x.offsetParent!==null&&x.getBoundingClientRect().left>innerWidth*.60&&Math.abs(x.getBoundingClientRect().top-r.top)<55&&/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i.test(clean(x.textContent)));
+  if(next&&headings.some(h=>h<r.top))out.push(name);
  }
- return [...new Set(names)];
+ return [...new Set(out)];
 }
 function comboMatchesDrafted(combo,drafted){
  const parts=combo.split(' + ').map(norm);
