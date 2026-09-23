@@ -5,6 +5,7 @@ let alive=true, scanTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',se
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
+const tokens=s=>norm(s).split(/\\s+/).filter(Boolean);
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function computeStats(){
@@ -74,6 +75,7 @@ function findPlayerRows(){
  }
  return rows;
 }
+function exposureCount(name,map){const k=norm(name);if(map.has(k))return map.get(k);const a=tokens(name);if(!a.length)return 0;let hits=[];for(const [stored,count] of map){const b=tokens(stored);const short=a.length<=b.length?a:b,long=a.length<=b.length?b:a;if(short.length&&short.every((x,i)=>x===long[long.length-short.length+i]))hits.push(count)}return hits.length===1?hits[0]:0}
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
  b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
@@ -83,7 +85,7 @@ function renderBadges(){
  const st=cached.stats;if(!st)return;
  const rows=findPlayerRows();
  for(const {name,el,row} of rows){
-  const key=norm(name),count=st.map.get(key)||0;
+  const count=exposureCount(name,st.map);
   let b=row.querySelector(':scope > [data-nuke-exposure]');
   if(!b){b=badge(count,st.total);row.appendChild(b)}
   else b.textContent=st.total?`${Math.round(count/st.total*100)}% · ${count}/${st.total}`:'0% · 0/0';
