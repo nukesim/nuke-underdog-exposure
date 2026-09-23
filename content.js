@@ -124,24 +124,15 @@ function nflRowMeta(row){
  return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||''};
 }
 function draftedNFL(){
- const root=playerPoolRoot(), out=[], seen=new Set();
- const headings=[...document.querySelectorAll('div,span,p')].filter(el=>{
-  if(el.childElementCount||el.offsetParent===null||root?.contains(el))return false;
-  const r=el.getBoundingClientRect();
-  return r.left>innerWidth*.60&&/^(QB|RB|WR|TE)$/i.test(clean(el.textContent));
- }).map(el=>({pos:clean(el.textContent).toUpperCase(),top:el.getBoundingClientRect().top}))
-   .sort((a,b)=>a.top-b.top);
- const games=[...document.querySelectorAll('div,span,p')].filter(el=>{
-  if(el.childElementCount||el.offsetParent===null||root?.contains(el))return false;
-  const r=el.getBoundingClientRect();
-  return r.left>innerWidth*.60&&/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i.test(clean(el.textContent));
- });
+ const root=playerPoolRoot(),out=[],seen=new Set();
+ const headings=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&!root?.contains(el)&&el.getBoundingClientRect().left>innerWidth*.60&&/^(QB|RB|WR|TE)$/i.test(clean(el.textContent))).map(el=>({pos:clean(el.textContent).toUpperCase(),top:el.getBoundingClientRect().top})).sort((a,b)=>a.top-b.top);
+ const games=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&!root?.contains(el)&&el.getBoundingClientRect().left>innerWidth*.60&&/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i.test(clean(el.textContent)));
  for(const el of games){
-  const r=el.getBoundingClientRect(), m=clean(el.textContent).match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);
-  const h=headings.filter(x=>x.top<r.top).at(-1); if(!m||!h)continue;
-  const item={pos:h.pos,team:m[1].toUpperCase(),opp:m[2].toUpperCase()};
-  const key=item.pos+'|'+item.team+'|'+Math.round(r.top);
-  if(!seen.has(key)){seen.add(key);out.push(item)}
+  const r=el.getBoundingClientRect(),m=clean(el.textContent).match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i),h=headings.filter(x=>x.top<r.top).at(-1);if(!m||!h)continue;
+  const candidates=[...document.querySelectorAll('div,span,p')].filter(x=>x.childElementCount===0&&x.offsetParent!==null&&!root?.contains(x)&&x!==el).map(x=>({x,t:clean(x.textContent),r:x.getBoundingClientRect()})).filter(o=>o.r.left>innerWidth*.60&&o.r.top<r.top&&r.top-o.r.top<45&&o.t.length>=4&&o.t.length<=40&&/^[A-Za-zÀ-ÿ.' -]+$/.test(o.t)&&! /^(QB|RB|WR|TE)$/i.test(o.t)).sort((a,b)=>(r.top-b.r.top)-(r.top-a.r.top));
+  const name=candidates[0]?.t||'';
+  const item={pos:h.pos,team:m[1].toUpperCase(),opp:m[2].toUpperCase(),name};
+  const key=item.pos+'|'+item.team+'|'+norm(name)+'|'+Math.round(r.top);if(!seen.has(key)){seen.add(key);out.push(item)}
  }
  return out;
 }
@@ -177,20 +168,7 @@ function renderBadges(){
   if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
  }
 }
-function draftedNames(){
- const drafted=draftedNFL(), pool=playerPoolRoot(), out=[];
- for(const el of document.querySelectorAll('div,span,p')){
-  if(el.childElementCount||el.offsetParent===null||pool?.contains(el))continue;
-  const r=el.getBoundingClientRect();if(r.left<innerWidth*.60)continue;
-  const name=clean(el.textContent);if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
-  let p=el.parentElement, text='';
-  for(let i=0;i<4&&p;i++,p=p.parentElement){text+=' '+clean(p.innerText);if(text.length>250)break}
-  const gm=text.match(/\b([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})\b/i);if(!gm)continue;
-  const team=gm[1].toUpperCase();
-  if(drafted.some(d=>d.team===team)&&!out.includes(name))out.push(name);
- }
- return out;
-}
+function draftedNames(){return [...new Set(draftedNFL().map(x=>x.name).filter(Boolean))]}
 function comboMatchesDrafted(combo,drafted){
  const parts=combo.split(' + ').map(norm);
  return drafted.some(n=>{const a=aliasKeys(n);return parts.some(p=>a.includes(p)||aliasKeys(p).some(x=>a.includes(x)))});
