@@ -6,7 +6,7 @@ let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={draft
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
 const tokens=s=>norm(s).split(' ').filter(Boolean);
-const surnameKey=s=>{const a=tokens(s);if(!a.length)return '';return /^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1?a.at(-2):a.at(-1)};
+const aliasKeys=s=>{const a=tokens(s);if(!a.length)return [];const out=[norm(s)];if(a.length>1)out.push(a.slice(-2).join(' '));out.push(a.at(-1));if(/^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1){out.push(a.slice(-2).join(' '));out.push(a.at(-2))}return [...new Set(out)]};
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function harvestStructured(root){
@@ -34,9 +34,7 @@ function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
  for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
- const surname=new Map();
- for(const [name,count] of map){const key=surnameKey(name);if(!key)continue;const prev=surname.get(key);surname.set(key,prev===undefined?count:null)}
- cached.stats={total:ds.length,map,surname};
+ cached.stats={total:ds.length,map};
 }
 async function hydrate(){
  const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
@@ -117,7 +115,7 @@ function findPlayerRows(){
  }
  return rows;
 }
-function exposureCount(name,st){const k=norm(name);if(st.map.has(k))return st.map.get(k);const v=st.surname.get(surnameKey(name));return Number.isFinite(v)?v:0}
+function exposureCount(name,st){for(const key of aliasKeys(name))if(st.map.has(key))return st.map.get(key);return 0}
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
  b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
