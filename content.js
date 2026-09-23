@@ -113,7 +113,7 @@ function findPlayerRows(){
  }
  return rows;
 }
-function exposureCount(name,map){const k=norm(name);if(map.has(k))return map.get(k);const a=tokens(name);if(!a.length)return 0;let hits=[];for(const [stored,count] of map){const b=tokens(stored);const short=a.length<=b.length?a:b,long=a.length<=b.length?b:a;if(short.length&&short.every((x,i)=>x===long[long.length-short.length+i]))hits.push(count)}return hits.length===1?hits[0]:0}
+function exposureCount(name,map){const k=norm(name);if(map.has(k))return map.get(k);const live=tokens(name);if(!live.length)return 0;const suffix=/^(ii|iii|iv|jr|sr)$/.test(live.at(-1))&&live.length>1?live.at(-2):live.at(-1);let matches=[];for(const [stored,count] of map){const st=tokens(stored);if(!st.length)continue;const ss=/^(ii|iii|iv|jr|sr)$/.test(st.at(-1))&&st.length>1?st.at(-2):st.at(-1);if(ss===suffix)matches.push(count)}return matches.length===1?matches[0]:0}
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
  b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
