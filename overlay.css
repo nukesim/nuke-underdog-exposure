@@ -6,3 +6,10 @@
 .nuke-qb-stack::after{background:#38d996!important;box-shadow:0 0 5px rgba(56,217,150,.8)!important}
 .nuke-bringback::after{background:#43b9ff!important;box-shadow:0 0 5px rgba(67,185,255,.75)!important}
 .nuke-same-team::after{background:#f4bd31!important;box-shadow:0 0 5px rgba(244,189,49,.7)!important}
+
+#nuke-combo-panel{margin-top:12px!important;padding:12px 14px!important;border:1px solid #283744!important;border-radius:8px!important;background:#0d151d!important;color:#fff!important;font:12px/1.35 Arial,sans-serif!important;max-height:280px!important;overflow:auto!important}
+.nuke-combo-head{display:flex!important;justify-content:space-between!important;align-items:center!important;margin-bottom:7px!important;color:#f5df00!important;letter-spacing:.5px!important}
+.nuke-combo-head span{color:#8fa4b5!important;font-size:10px!important;font-weight:700!important}
+.nuke-combo-row{display:flex!important;justify-content:space-between!important;gap:12px!important;padding:6px 0!important;border-top:1px solid #1d2a35!important}
+.nuke-combo-row span{overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
+.nuke-combo-row b{flex:0 0 auto!important;color:#dce8f1!important}
