@@ -30,7 +30,7 @@ function rosterStrings(){
  }
  return [...new Set(out)];
 }
-function detectCompletedContest(){
+function detectSport(){const t=(document.body.innerText||'').toUpperCase();for(const s of ['NFL','NBA','MLB','NHL','WNBA','PGA','MMA','CFB','CBB','SOCCER','TENNIS'])if(new RegExp('\\\\b'+s+'\\\\b').test(t))return s;return 'UNKNOWN'}\nfunction detectCompletedContest(){
  const projected=[...document.querySelectorAll('*')].find(el=>/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
  if(projected){let box=projected;for(let i=0;i<12&&box;i++,box=box.parentElement){const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);const title=lines.find(x=>x.length>2&&x.length<90&&!/Projected|Entry|Prizes?|Your teams?|Completed|Upcoming|Live/i.test(x)&&!/^\$|^\d/.test(x));if(title)return contestNorm(title)}}
  return '';
@@ -92,13 +92,13 @@ function renderBadges(){
  }
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges()}finally{scanBusy=false}}},ms)}
-const obs=new MutationObserver(m=>{if(m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))scheduleRender()});
+const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
  if(changes.drafts)cached.drafts=changes.drafts.newValue||[];
- if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';\n if(changes.lastSelectedContest)cached.selected=changes.lastSelectedContest.newValue||'ALL';
+ if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';\n if(changes.exposureScope)cached.scope=changes.exposureScope.newValue||{sport:'ALL',contest:'ALL'};\n if(changes.lastSelectedContest&&!changes.exposureScope)cached.scope.contest=changes.lastSelectedContest.newValue||'ALL';
  computeStats();scheduleRender(0);
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
