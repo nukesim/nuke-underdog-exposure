@@ -125,14 +125,28 @@ function nflRowMeta(row){
 }
 function draftedNFL(){
  const root=playerPoolRoot(),out=[],seen=new Set();
- const headings=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&!root?.contains(el)&&el.getBoundingClientRect().left>innerWidth*.60&&/^(QB|RB|WR|TE)$/i.test(clean(el.textContent))).map(el=>({pos:clean(el.textContent).toUpperCase(),top:el.getBoundingClientRect().top})).sort((a,b)=>a.top-b.top);
- const games=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&!root?.contains(el)&&el.getBoundingClientRect().left>innerWidth*.60&&/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i.test(clean(el.textContent)));
- for(const el of games){
-  const r=el.getBoundingClientRect(),m=clean(el.textContent).match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i),h=headings.filter(x=>x.top<r.top).at(-1);if(!m||!h)continue;
-  const candidates=[...document.querySelectorAll('div,span,p')].filter(x=>x.childElementCount===0&&x.offsetParent!==null&&!root?.contains(x)&&x!==el).map(x=>({x,t:clean(x.textContent),r:x.getBoundingClientRect()})).filter(o=>o.r.left>innerWidth*.60&&o.r.top<r.top&&r.top-o.r.top<45&&o.t.length>=4&&o.t.length<=40&&/^[A-Za-zÀ-ÿ.' -]+$/.test(o.t)&&! /^(QB|RB|WR|TE)$/i.test(o.t)).sort((a,b)=>(r.top-b.r.top)-(r.top-a.r.top));
-  const name=candidates[0]?.t||'';
-  const item={pos:h.pos,team:m[1].toUpperCase(),opp:m[2].toUpperCase(),name};
-  const key=item.pos+'|'+item.team+'|'+norm(name)+'|'+Math.round(r.top);if(!seen.has(key)){seen.add(key);out.push(item)}
+ // Parse the roster panel as text instead of guessing DOM proximity. Underdog reflows
+ // player-name/game nodes, but their roster text order is stable: POS, name, TEAM vs/@ OPP.
+ const boxes=[...document.querySelectorAll('div')].filter(el=>{
+  if(el.offsetParent===null||root?.contains(el))return false;
+  const r=el.getBoundingClientRect(),t=el.innerText||'';
+  return r.left>innerWidth*.58&&r.width>220&&r.height>120&&/\b(QB|RB|WR|TE)\b/.test(t)&&/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/i.test(t);
+ }).sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height-b.getBoundingClientRect().width*b.getBoundingClientRect().height);
+ const box=boxes[0];if(!box)return out;
+ const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);
+ let pos='';
+ for(let i=0;i<lines.length;i++){
+  if(/^(QB|RB|WR|TE)$/i.test(lines[i])){pos=lines[i].toUpperCase();continue}
+  const m=lines[i].match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);if(!m||!pos)continue;
+  let name='';
+  for(let j=i-1;j>=Math.max(0,i-4);j--){
+   const x=lines[j];
+   if(/^(QB|RB|WR|TE)$/i.test(x))break;
+   if(x.length>=4&&x.length<=45&&/^[A-Za-zÀ-ÿ.' -]+$/.test(x)&&!/^(ADP|Pick|Projected)$/i.test(x)){name=x;break}
+  }
+  if(!name)continue;
+  const item={pos,team:m[1].toUpperCase(),opp:m[2].toUpperCase(),name};
+  const key=pos+'|'+item.team+'|'+norm(name);if(!seen.has(key)){seen.add(key);out.push(item)}
  }
  return out;
 }
