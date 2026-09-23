@@ -183,11 +183,13 @@ function renderBadges(){
   const {name,el,row}=rows[i];
   const count=counts[i];
   const b=badge(count,st.total,maxCount);
-  b.style.marginLeft='6px';
+  b.style.marginLeft='5px';
   b.style.position='static';
   b.style.width='auto';
   b.style.height='auto';
   b.style.flex='0 0 auto';
+  // Keep exposure on the player-name line instead of between name and team/game metadata.
+  // Attach immediately after the leaf name node so Underdog's second line stays untouched.
   el.insertAdjacentElement('afterend',b);
   if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
  }
