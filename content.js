@@ -177,18 +177,34 @@ function renderBadges(){
   if(cached.sport==='NFL'){const tag=correlationTag(nflRowMeta(row),drafted);if(tag){const cls=tag.kind==='qb-stack'?'nuke-qb-stack':tag.kind==='bringback'?'nuke-bringback':'nuke-same-team';el.classList.add(cls);el.title=tag.kind==='qb-stack'?'QB STACK · same team as your drafted QB':tag.kind==='bringback'?'BRING-BACK · opponent of your drafted QB':'SAME TEAM · teammate of a drafted skill player without its QB'}}
  }
 }
+function draftedNames(){
+ const root=playerPoolRoot(), names=[];
+ for(const el of document.querySelectorAll('div,span,p')){
+  if(el.childElementCount||el.offsetParent===null||root?.contains(el))continue;
+  const r=el.getBoundingClientRect();if(r.left<innerWidth*.60)continue;
+  const name=clean(el.textContent);
+  if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
+  const p=el.parentElement, t=clean(p?.innerText||'');
+  if(/\b[A-Z]{2,3}\s+(?:vs|@)\s+[A-Z]{2,3}\b/.test(t)&&/\b(QB|RB|WR|TE)\b/i.test(t))names.push(name);
+ }
+ return [...new Set(names)];
+}
+function comboMatchesDrafted(combo,drafted){
+ const parts=combo.split(' + ').map(norm);
+ return drafted.some(n=>{const a=aliasKeys(n);return parts.some(p=>a.includes(p)||aliasKeys(p).some(x=>a.includes(x)))});
+}
 function renderComboPanel(){
  if(!location.pathname.includes('/draft/')||!cached.stats)return;
  let panel=document.getElementById('nuke-combo-panel');
  const queueTitle=[...document.querySelectorAll('*')].find(el=>el.childElementCount===0&&/^Queue(?:\s*\d+)?$/i.test(clean(el.textContent))&&el.offsetParent!==null);
  if(!queueTitle)return;
- let host=queueTitle.parentElement;
- for(let i=0;i<3&&host;i++){const r=host.getBoundingClientRect();if(r.width>350&&r.width<800)break;host=host.parentElement}
- if(!host)return;
- if(!panel){panel=document.createElement('section');panel.id='nuke-combo-panel';host.insertAdjacentElement('afterend',panel)}
- const total=cached.stats.total||0;
- const top=[...cached.stats.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,8);
- panel.innerHTML='<div class="nuke-combo-head"><b>NUKE COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
+ let host=queueTitle.parentElement;for(let i=0;i<3&&host;i++){const r=host.getBoundingClientRect();if(r.width>350&&r.width<800)break;host=host.parentElement}
+ if(!host)return;if(!panel){panel=document.createElement('section');panel.id='nuke-combo-panel';host.insertAdjacentElement('afterend',panel)}
+ const total=cached.stats.total||0,drafted=draftedNames();
+ let all=[...cached.stats.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
+ let top=drafted.length?all.filter(([k])=>comboMatchesDrafted(k,drafted)).slice(0,10):all.slice(0,8);
+ const label=drafted.length?'COMBOS WITH MY PICKS':'TOP COMBOS';
+ panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · '+label+'</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('')+(top.length?'':'<div class="nuke-combo-empty">No historical combos with your picks yet.</div>');
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
 const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else scheduleRender()});
