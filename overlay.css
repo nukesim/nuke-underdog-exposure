@@ -20,3 +20,13 @@
 .nuke-exposure-badge.nuke-exposure-yellow{border-color:#f5df00!important}
 .nuke-exposure-badge.nuke-exposure-orange{border-color:#f28c28!important}
 .nuke-exposure-badge.nuke-exposure-red{border-color:#ef5350!important}
+
+
+/* Compact inline ownership: percentage sits directly beside the player name. */
+.nuke-exposure-badge{
+  margin-left:5px!important;
+  padding:1px 4px!important;
+  font-size:9px!important;
+  line-height:1.15!important;
+  transform:translateY(-1px)!important;
+}
