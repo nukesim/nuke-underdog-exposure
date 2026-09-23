@@ -97,22 +97,22 @@ async function captureCompleted(){
  await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest}}));
  cached.drafts=drafts; computeStats();
 }
-function leafTextElements(){
- const root=document.querySelector('[class*="players" i]')||document.body;
- return [...root.querySelectorAll('span,div,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null);
+function playerPoolRoot(){
+ const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Players$/i.test(clean(el.textContent))&&el.offsetParent!==null);
+ for(const label of labels){let p=label.parentElement;for(let i=0;i<6&&p;i++,p=p.parentElement){const t=clean(p.innerText);if(/\bADP\b/i.test(t)&&/\bProj\b/i.test(t)&&p.getBoundingClientRect().width<900)return p}}
+ return null;
 }
 function findPlayerRows(){
+ const root=playerPoolRoot();if(!root)return [];
  const rows=[];const seen=new Set();
- for(const el of leafTextElements()){
+ for(const el of root.querySelectorAll('span,div,p')){
+  if(el.childElementCount||el.offsetParent===null)continue;
   const name=clean(el.textContent);if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
   let row=el;
-  for(let i=0;i<4&&row;i++,row=row.parentElement){
-   const t=clean(row.innerText);
-   const playerLike=/\b(QB|RB|WR|TE|PG|SG|SF|PF|C|P|OF|LW|RW|G|F)\d*\b/i.test(t)&&(/\bvs\b|\s@\s/i.test(t));
-   if(playerLike){
-    const rect=row.getBoundingClientRect();if(rect.width<250||rect.height<35||rect.height>100)break;
-    const key=norm(name)+'|'+Math.round(rect.top);if(!seen.has(key)){seen.add(key);rows.push({name,el,row})}break;
-   }
+  for(let i=0;i<4&&row&&root.contains(row);i++,row=row.parentElement){
+   const t=clean(row.innerText),rect=row.getBoundingClientRect();
+   const playerLike=/\b(QB|RB|WR|TE|PG|SG|SF|PF|C|P|OF|LW|RW|G|F)\d*\b/i.test(t)&&(/\bvs\b|\s@\s/i.test(t))&&/\d+(?:\.\d+)?/.test(t);
+   if(playerLike&&rect.width>300&&rect.height>=35&&rect.height<=85){const key=norm(name)+'|'+Math.round(rect.top);if(!seen.has(key)){seen.add(key);rows.push({name,el,row})}break}
   }
  }
  return rows;
