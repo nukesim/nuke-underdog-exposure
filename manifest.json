@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NUKE Underdog Exposure",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Fast live Underdog exposure by sport, tournament, or overall.",
   "permissions": [
     "storage",
@@ -21,6 +21,19 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
+    {
+      "matches": [
+        "https://underdogfantasy.com/*",
+        "https://*.underdogfantasy.com/*",
+        "https://app.underdogsports.com/*",
+        "https://*.underdogsports.com/*"
+      ],
+      "js": [
+        "page-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": [
         "https://underdogfantasy.com/*",
