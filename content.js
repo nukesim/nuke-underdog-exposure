@@ -122,12 +122,23 @@ function nflRowMeta(row){
  return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||''};
 }
 function draftedNFL(){
- const root=playerPoolRoot(),out=[];const seen=new Set();
- for(const el of document.querySelectorAll('div')){
-  if(root?.contains(el)||el.offsetParent===null||el.childElementCount>8)continue;
-  const r=el.getBoundingClientRect();if(r.left<innerWidth*.58||r.width<180||r.width>500||r.height<35||r.height>105)continue;
-  const m=nflRowMeta(el);if(!m.pos||!m.team)continue;
-  const key=m.pos+'|'+m.team+'|'+Math.round(r.top);if(!seen.has(key)){seen.add(key);out.push(m)}
+ const out=[];const seen=new Set();
+ const pool=playerPoolRoot();
+ const leaves=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&(!pool||!pool.contains(el)));
+ for(const el of leaves){
+  const txt=clean(el.textContent);
+  const game=txt.match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);if(!game)continue;
+  const r=el.getBoundingClientRect();if(r.left<innerWidth*.58)continue;
+  let pos='',p=el.parentElement;
+  for(let depth=0;depth<8&&p&&!pos;depth++,p=p.parentElement){
+   const pr=p.getBoundingClientRect();
+   const headings=[...document.querySelectorAll('div,span,p')].filter(h=>h.childElementCount===0&&/^(QB|RB|WR|TE)$/i.test(clean(h.textContent))&&h.offsetParent!==null&&h.getBoundingClientRect().left>innerWidth*.58&&h.getBoundingClientRect().top<r.top);
+   headings.sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top);
+   if(headings[0])pos=clean(headings[0].textContent).toUpperCase();
+   if(pr.width>500)break;
+  }
+  const team=game[1].toUpperCase(),opp=game[2].toUpperCase(),key=pos+'|'+team+'|'+Math.round(r.top);
+  if(pos&&!seen.has(key)){seen.add(key);out.push({pos,team,opp})}
  }
  return out;
 }
