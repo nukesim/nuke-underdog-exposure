@@ -5,7 +5,7 @@ let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={draft
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
-const tokens=s=>norm(s).split(' ').filter(Boolean);
+const tokens=s=>norm(s).split(' ').filter(Boolean);\nconst surnameKey=s=>{const a=tokens(s);if(!a.length)return '';return /^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1?a.at(-2):a.at(-1)};
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
 
 function harvestStructured(root){
@@ -33,7 +33,7 @@ function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map();
  for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
- cached.stats={total:ds.length,map};
+ const surname=new Map();\n for(const [name,count] of map){const key=surnameKey(name);if(!key)continue;const prev=surname.get(key);surname.set(key,prev===undefined?count:null)}\n cached.stats={total:ds.length,map,surname};
 }
 async function hydrate(){
  const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
@@ -114,7 +114,7 @@ function findPlayerRows(){
  }
  return rows;
 }
-function exposureCount(name,map){const k=norm(name);if(map.has(k))return map.get(k);const live=tokens(name);if(!live.length)return 0;const suffix=/^(ii|iii|iv|jr|sr)$/.test(live.at(-1))&&live.length>1?live.at(-2):live.at(-1);let matches=[];for(const [stored,count] of map){const st=tokens(stored);if(!st.length)continue;const ss=/^(ii|iii|iv|jr|sr)$/.test(st.at(-1))&&st.length>1?st.at(-2):st.at(-1);if(ss===suffix)matches.push(count)}return matches.length===1?matches[0]:0}
+function exposureCount(name,st){const k=norm(name);if(st.map.has(k))return st.map.get(k);const v=st.surname.get(surnameKey(name));return Number.isFinite(v)?v:0}
 function badge(count,total){
  const b=document.createElement('span'); b.dataset.nukeExposure='1'; b.className='nuke-exposure-badge';
  b.textContent=total?`${Math.round(count/total*100)}% · ${count}/${total}`:'0% · 0/0'; b.title='NUKE exposure · '+cached.sport+' · '+cached.selected; return b;
@@ -124,7 +124,7 @@ function renderBadges(){
  const st=cached.stats;if(!st)return;
  const rows=findPlayerRows();
  for(const {name,el,row} of rows){
-  const count=exposureCount(name,st.map);
+  const count=exposureCount(name,st);
   let b=row.querySelector(':scope > [data-nuke-exposure]');
   if(!b){b=badge(count,st.total);row.appendChild(b)}
   else b.textContent=st.total?`${Math.round(count/st.total*100)}% · ${count}/${st.total}`:'0% · 0/0';
