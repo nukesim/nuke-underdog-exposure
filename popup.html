@@ -1,28 +1,9 @@
 <!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>NUKE Exposure</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <main>
-    <header><div><span class="eyebrow">UNDERDOG NFL</span><h1>NUKE EXPOSURE</h1></div><button id="refresh">↻</button></header>
-    <section class="filters">
-      <label>WEEK<select id="week"></select></label>
-      <label>CONTEST<select id="contest"></select></label>
-    </section>
-    <section class="cards">
-      <div><b id="draftCount">0</b><span>DRAFTS</span></div>
-      <div><b id="playerCount">0</b><span>PLAYERS</span></div>
-      <div><b id="comboCount">0</b><span>COMBOS</span></div>
-    </section>
-    <nav><button class="tab active" data-tab="players">PLAYERS</button><button class="tab" data-tab="combos">COMBOS</button><button class="tab" data-tab="drafts">DRAFTS</button></nav>
-    <input id="search" placeholder="Search players…">
-    <section id="view"></section>
-    <footer>Data stays in this browser. v0.1</footer>
-  </main>
-  <script src="popup.js"></script>
-</body>
-</html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NUKE Exposure</title><link rel="stylesheet" href="popup.css"></head>
+<body><main>
+<header><div><span class="eyebrow">UNDERDOG NFL</span><h1>NUKE EXPOSURE</h1></div><button id="refresh">↻</button></header>
+<section class="filters"><label>TOURNAMENT<select id="contest"></select></label></section>
+<section class="cards"><div><b id="draftCount">0</b><span>DRAFTS</span></div><div><b id="playerCount">0</b><span>PLAYERS</span></div><div><b id="comboCount">0</b><span>COMBOS</span></div></section>
+<nav><button class="tab active" data-tab="players">PLAYERS</button><button class="tab" data-tab="combos">COMBOS</button><button class="tab" data-tab="drafts">DRAFTS</button></nav>
+<input id="search" placeholder="Search players…"><section id="view"></section><footer>Exposure is calculated within the selected tournament. v0.2</footer>
+</main><script src="popup.js"></script></body></html>
