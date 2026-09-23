@@ -52,3 +52,25 @@
 .nuke-next-metrics>div{line-height:1.05!important}
 .nuke-next-metrics b{display:block!important;color:#fff!important;font-size:11px!important}
 .nuke-next-metrics span{display:block!important;color:#6f8799!important;font-size:7px!important;font-weight:800!important;letter-spacing:.25px!important}
+
+
+/* Strong NFL stack target: full player row gets a clean neon-green treatment. */
+.nuke-stack-row{
+  position:relative!important;
+  border-radius:7px!important;
+  background:linear-gradient(90deg,rgba(56,217,150,.14),rgba(56,217,150,.045) 62%,transparent)!important;
+  box-shadow:inset 3px 0 0 #38d996, inset 0 1px 0 rgba(56,217,150,.42), inset 0 -1px 0 rgba(56,217,150,.42), 0 0 10px rgba(56,217,150,.12)!important;
+}
+.nuke-stack-row::after{
+  content:""!important;
+  pointer-events:none!important;
+  position:absolute!important;
+  inset:1px!important;
+  border-radius:6px!important;
+  border:1px solid rgba(56,217,150,.32)!important;
+  box-shadow:0 0 8px rgba(56,217,150,.18)!important;
+}
+.nuke-stack-row:hover{
+  background:linear-gradient(90deg,rgba(56,217,150,.20),rgba(56,217,150,.07) 65%,transparent)!important;
+  box-shadow:inset 3px 0 0 #55f0ad, inset 0 1px 0 rgba(85,240,173,.55), inset 0 -1px 0 rgba(85,240,173,.55), 0 0 13px rgba(56,217,150,.20)!important;
+}
