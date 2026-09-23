@@ -122,23 +122,24 @@ function nflRowMeta(row){
  return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||''};
 }
 function draftedNFL(){
- const out=[];const seen=new Set();
- const pool=playerPoolRoot();
- const leaves=[...document.querySelectorAll('div,span,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&(!pool||!pool.contains(el)));
- for(const el of leaves){
-  const txt=clean(el.textContent);
-  const game=txt.match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);if(!game)continue;
-  const r=el.getBoundingClientRect();if(r.left<innerWidth*.58)continue;
-  let pos='',p=el.parentElement;
-  for(let depth=0;depth<8&&p&&!pos;depth++,p=p.parentElement){
-   const pr=p.getBoundingClientRect();
-   const headings=[...document.querySelectorAll('div,span,p')].filter(h=>h.childElementCount===0&&/^(QB|RB|WR|TE)$/i.test(clean(h.textContent))&&h.offsetParent!==null&&h.getBoundingClientRect().left>innerWidth*.58&&h.getBoundingClientRect().top<r.top);
-   headings.sort((a,b)=>b.getBoundingClientRect().top-a.getBoundingClientRect().top);
-   if(headings[0])pos=clean(headings[0].textContent).toUpperCase();
-   if(pr.width>500)break;
-  }
-  const team=game[1].toUpperCase(),opp=game[2].toUpperCase(),key=pos+'|'+team+'|'+Math.round(r.top);
-  if(pos&&!seen.has(key)){seen.add(key);out.push({pos,team,opp})}
+ const root=playerPoolRoot(), out=[], seen=new Set();
+ const headings=[...document.querySelectorAll('div,span,p')].filter(el=>{
+  if(el.childElementCount||el.offsetParent===null||root?.contains(el))return false;
+  const r=el.getBoundingClientRect();
+  return r.left>innerWidth*.60&&/^(QB|RB|WR|TE)$/i.test(clean(el.textContent));
+ }).map(el=>({pos:clean(el.textContent).toUpperCase(),top:el.getBoundingClientRect().top}))
+   .sort((a,b)=>a.top-b.top);
+ const games=[...document.querySelectorAll('div,span,p')].filter(el=>{
+  if(el.childElementCount||el.offsetParent===null||root?.contains(el))return false;
+  const r=el.getBoundingClientRect();
+  return r.left>innerWidth*.60&&/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i.test(clean(el.textContent));
+ });
+ for(const el of games){
+  const r=el.getBoundingClientRect(), m=clean(el.textContent).match(/^([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})$/i);
+  const h=headings.filter(x=>x.top<r.top).at(-1); if(!m||!h)continue;
+  const item={pos:h.pos,team:m[1].toUpperCase(),opp:m[2].toUpperCase()};
+  const key=item.pos+'|'+item.team+'|'+Math.round(r.top);
+  if(!seen.has(key)){seen.add(key);out.push(item)}
  }
  return out;
 }
