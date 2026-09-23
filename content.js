@@ -70,7 +70,7 @@ async function captureCompleted(){
   byId.set(draftId,{draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
  }
  const drafts=[...byId.values()];
- await safe(()=>chrome.storage.local.set({drafts}));
+ await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest}}));
  cached.drafts=drafts; computeStats();
 }
 function leafTextElements(){
