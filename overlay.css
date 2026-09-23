@@ -1,5 +1,8 @@
 .nuke-exposure-badge{display:inline-flex!important;align-items:center!important;margin-left:7px!important;padding:2px 6px!important;border:1px solid #f5df00!important;border-radius:5px!important;background:#111820!important;color:#fff!important;font:700 10px/1.35 Arial,sans-serif!important;letter-spacing:.2px!important;white-space:nowrap!important;vertical-align:middle!important;z-index:9999!important}.nuke-exposure-badge::first-letter{color:#f5df00!important}
 
-.nuke-qb-stack{background:rgba(56,217,150,.18)!important;box-shadow:0 0 0 1px rgba(56,217,150,.7)!important;border-radius:4px!important;padding:1px 4px!important;color:#a9f5d2!important}
-.nuke-bringback{background:rgba(67,185,255,.16)!important;box-shadow:0 0 0 1px rgba(67,185,255,.65)!important;border-radius:4px!important;padding:1px 4px!important;color:#bce8ff!important}
-.nuke-same-team{background:rgba(244,189,49,.16)!important;box-shadow:0 0 0 1px rgba(244,189,49,.65)!important;border-radius:4px!important;padding:1px 4px!important;color:#ffe29a!important}
+
+.nuke-qb-stack,.nuke-bringback,.nuke-same-team{position:relative!important;background:none!important;box-shadow:none!important;padding:0!important;color:inherit!important}
+.nuke-qb-stack::after,.nuke-bringback::after,.nuke-same-team::after{content:""!important;display:inline-block!important;width:7px!important;height:7px!important;border-radius:50%!important;margin-left:6px!important;vertical-align:middle!important}
+.nuke-qb-stack::after{background:#38d996!important;box-shadow:0 0 5px rgba(56,217,150,.8)!important}
+.nuke-bringback::after{background:#43b9ff!important;box-shadow:0 0 5px rgba(67,185,255,.75)!important}
+.nuke-same-team::after{background:#f4bd31!important;box-shadow:0 0 5px rgba(244,189,49,.7)!important}
