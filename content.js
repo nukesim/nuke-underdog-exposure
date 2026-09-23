@@ -31,8 +31,25 @@ function rosterStrings(){
  return [...new Set(out)];
 }
 function detectCompletedContest(){
- const projected=[...document.querySelectorAll('*')].find(el=>/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
- if(projected){let box=projected;for(let i=0;i<12&&box;i++,box=box.parentElement){const lines=(box.innerText||'').split('\n').map(clean).filter(Boolean);const title=lines.find(x=>x.length>2&&x.length<90&&!/Projected|Entry|Prizes?|Your teams?|Completed|Upcoming|Live/i.test(x)&&!/^\$|^\d/.test(x));if(title)return contestNorm(title)}}
+ const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Your teams?$/i.test(clean(el.textContent)));
+ for(const label of labels){
+  let box=label.parentElement;
+  for(let depth=0;depth<10&&box;depth++,box=box.parentElement){
+   const raw=(box.innerText||'').split('\n').map(clean).filter(Boolean);
+   if(!raw.some(x=>/Projected$/i.test(x)))continue;
+   const yi=raw.findIndex(x=>/^Your teams?$/i.test(x));
+   if(yi<0)continue;
+   const before=raw.slice(0,yi);
+   const candidates=before.filter(x=>
+    x.length>=3&&x.length<=80&&
+    !x.includes(',')&&
+    !/Projected|Entry|Entries|Prizes?|entry max|to first|Exposure|Email|Completed|Upcoming|Live/i.test(x)&&
+    !/^\$/.test(x)&&!/^\d+(?:\.\d+)?$/.test(x)&&
+    !/\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}/.test(x)
+   );
+   if(candidates.length)return contestNorm(candidates[0]);
+  }
+ }
  return '';
 }
 function detectSport(){
