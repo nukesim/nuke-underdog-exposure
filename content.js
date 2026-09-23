@@ -99,15 +99,16 @@ function leafTextElements(){
  return [...root.querySelectorAll('span,div,p')].filter(el=>el.childElementCount===0&&el.offsetParent!==null);
 }
 function findPlayerRows(){
- const rows=[]; const seen=new Set();
+ const rows=[];const seen=new Set();
  for(const el of leafTextElements()){
-  const name=clean(el.textContent); if(name.length<4||name.length>32||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
+  const name=clean(el.textContent);if(name.length<4||name.length>40||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
   let row=el;
-  for(let i=0;i<5&&row;i++,row=row.parentElement){
+  for(let i=0;i<4&&row;i++,row=row.parentElement){
    const t=clean(row.innerText);
-   if(/\b(QB|RB|WR|TE)\d?\b/.test(t)&&(/\bvs\b/i.test(t)||/\s@\s/.test(t))&&(/ADP/i.test(t)||/Proj/i.test(t)||/\d+\.\d+/.test(t))){
-    const key=norm(name)+'|'+Math.round(row.getBoundingClientRect().top);
-    if(!seen.has(key)){seen.add(key);rows.push({name,el,row})} break;
+   const playerLike=/\b(QB|RB|WR|TE|PG|SG|SF|PF|C|P|OF|LW|RW|G|F)\d*\b/i.test(t)&&(/\bvs\b|\s@\s/i.test(t));
+   if(playerLike){
+    const rect=row.getBoundingClientRect();if(rect.width<250||rect.height<35||rect.height>100)break;
+    const key=norm(name)+'|'+Math.round(rect.top);if(!seen.has(key)){seen.add(key);rows.push({name,el,row})}break;
    }
   }
  }
