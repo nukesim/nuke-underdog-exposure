@@ -125,12 +125,17 @@ function badge(count,total){
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
  const st=cached.stats;if(!st)return;
+ document.querySelectorAll('[data-nuke-exposure]').forEach(b=>b.remove());
  const rows=findPlayerRows();
- for(const {name,el,row} of rows){
+ for(const {name,el} of rows){
   const count=exposureCount(name,st);
-  let b=row.querySelector(':scope > [data-nuke-exposure]');
-  if(!b){b=badge(count,st.total);row.appendChild(b)}
-  else b.textContent=st.total?`${Math.round(count/st.total*100)}% · ${count}/${st.total}`:'0% · 0/0';
+  const b=badge(count,st.total);
+  b.style.marginLeft='6px';
+  b.style.position='static';
+  b.style.width='auto';
+  b.style.height='auto';
+  b.style.flex='0 0 auto';
+  el.insertAdjacentElement('afterend',b);
  }
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges()}finally{scanBusy=false}}},ms)}
