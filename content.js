@@ -218,30 +218,40 @@ function pairCount(a,b){
  }
  return 0;
 }
-function candidateSignals(name,meta,drafted,total){
+function rosterState(drafted){
+ const counts={QB:0,RB:0,WR:0,TE:0};for(const p of drafted)if(counts[p.pos]!==undefined)counts[p.pos]++;
+ const qb=drafted.find(p=>p.pos==='QB')||null;
+ const qbCatches=qb?drafted.filter(p=>['WR','TE'].includes(p.pos)&&p.team===qb.team):[];
+ const reverseTeams=[...new Set(drafted.filter(p=>['WR','TE'].includes(p.pos)).map(p=>p.team))];
+ let stackText='QB STACK · NOT STARTED',stackClass='open';
+ if(qb){stackText=qbCatches.length?qb.team+' STACK · '+qb.name+' + '+qbCatches.map(p=>p.name).join(' + ')+' ✓':qb.team+' STACK · '+qb.name+' → NEED WR/TE';stackClass=qbCatches.length?'complete':'need'}
+ else if(reverseTeams.length) stackText='QB STACK · '+reverseTeams.join('/')+' PASS CATCHER → QB AVAILABLE';
+ return {counts,qb,qbCatches,reverseTeams,stackText,stackClass};
+}
+function positionNeed(meta,state){
+ const total=Object.values(state.counts).reduce((a,b)=>a+b,0);
+ if(meta.pos==='QB')return state.counts.QB?0:(total>=3?14:8);
+ if(meta.pos==='WR')return state.counts.WR<2?10:state.counts.WR<3?5:0;
+ if(meta.pos==='TE')return state.counts.TE<1?8:2;
+ if(meta.pos==='RB')return state.counts.RB<2?7:state.counts.RB<3?2:-3;
+ return 0;
+}
+function candidateSignals(name,meta,drafted,total,state){
  const allRels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).sort((a,b)=>b.count-a.count);
- const rels=allRels.filter(x=>x.count>0);
- const exposure=exposureCount(name,cached.stats);
- const tag=correlationTag(meta,drafted);
- const covered=rels.length,sum=rels.reduce((s,x)=>s+x.count,0),best=rels[0]?.count||0;
- // FIT is deliberately driven by how often this candidate has appeared WITH the
- // players already on this roster. Exposure is displayed separately and is not
- // allowed to make a highly-owned but unrelated player rank first.
- const pickCount=Math.max(1,drafted.length);
- const avgPairRate=total?sum/(total*pickCount):0;
- const coverageRate=covered/pickCount;
- const corrBonus=tag?.kind==='qb-stack'?22:tag?.kind==='bringback'?14:tag?.kind==='same-team'?5:0;
- const fit=Math.min(100,Math.round(avgPairRate*65+coverageRate*25+corrBonus));
- return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit};
+ const rels=allRels.filter(x=>x.count>0),exposure=exposureCount(name,cached.stats),tag=correlationTag(meta,drafted);
+ const covered=rels.length,sum=rels.reduce((s,x)=>s+x.count,0),best=rels[0]?.count||0,pickCount=Math.max(1,drafted.length);
+ const avgPairRate=total?sum/(total*pickCount):0,coverageRate=covered/pickCount;
+ // Correlation and actual roster need now lead the score; historical pairing remains useful
+ // but cannot bury an obvious QB-stack requirement.
+ const corrBonus=tag?.kind==='qb-stack'?34:tag?.kind==='bringback'?12:tag?.kind==='same-team'?3:0;
+ const needBonus=positionNeed(meta,state);
+ const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*48+coverageRate*20+corrBonus+needBonus)));
+ return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus};
 }
 function availableCandidates(){
- const drafted=draftedNFL();
- const hasQB=drafted.some(p=>p.pos==='QB');
- return findPlayerRows().map(({name,row})=>candidateSignals(name,nflRowMeta(row),drafted,cached.stats?.total||0))
+ const drafted=draftedNFL(),state=rosterState(drafted),hasQB=!!state.qb;
+ return findPlayerRows().map(({name,row})=>candidateSignals(name,nflRowMeta(row),drafted,cached.stats?.total||0,state))
   .filter(x=>!drafted.some(p=>namesMatch(p.name,x.name)))
-  // Daily Draft rosters only need one QB. Once one is rostered, NUKE NEXT
-  // must stop recommending every other QB, even when a WR/TE would otherwise
-  // create a reverse-stack signal.
   .filter(x=>!(hasQB&&x.meta.pos==='QB'));
 }
 function renderComboPanel(){
@@ -257,17 +267,16 @@ function renderComboPanel(){
   panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · TOP COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
   return;
  }
- const candidates=availableCandidates().sort((a,b)=>
-  b.fit-a.fit||b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)
- ).slice(0,10);
+ const state=rosterState(drafted);
+ const candidates=availableCandidates().sort((a,b)=>b.fit-a.fit||b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)).slice(0,10);
  const picked=drafted.map(x=>x.name).join(' + ');
+ const build='QB '+state.counts.QB+' · RB '+state.counts.RB+' · WR '+state.counts.WR+' · TE '+state.counts.TE;
  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
+  '<div class="nuke-roster-intel"><span>'+build+'</span><b class="'+state.stackClass+'">'+state.stackText+'</b></div>'+
   '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
   candidates.map(x=>{
-   const pct=total?Math.round(x.exposure/total*100):0;
-   const rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
-   const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
-   const relationship=rel||'No prior combo with my picks';
+   const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
+   const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'',relationship=rel||'No prior combo with my picks';
    return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+'<span>'+relationship+'</span></div>'+
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
