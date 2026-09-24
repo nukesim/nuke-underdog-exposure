@@ -99,3 +99,8 @@
 .nuke-duplicate.danger{border:1px solid rgba(255,72,72,.9)!important;background:rgba(255,50,50,.13)!important;box-shadow:0 0 9px rgba(255,50,50,.15)!important}
 .nuke-duplicate.danger b{color:#ff6666!important}
 .nuke-next-tag.duplicate{color:#ffad55!important;border:1px solid rgba(255,155,55,.72)!important;background:rgba(255,120,30,.10)!important}
+
+.nuke-build-mix{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important;margin:4px 0 6px!important}
+.nuke-build-mix>span{display:flex!important;flex-direction:column!important;padding:5px 6px!important;border:1px solid #263746!important;border-radius:5px!important;background:#0b141c!important;min-width:0!important}
+.nuke-build-mix b{font-size:8px!important;color:#9db1c1!important;white-space:nowrap!important}
+.nuke-build-mix em{font-style:normal!important;font-size:10px!important;font-weight:800!important;color:#fff!important;margin-top:2px!important}
