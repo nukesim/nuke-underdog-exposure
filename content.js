@@ -244,22 +244,27 @@ async function captureOfficialExposure(){
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
 
- // Exact current Underdog exposure is the ONLY acceptable source when present.
+ // Current exact Underdog Exposure value wins when captured for this portfolio.
  const official=cached.officialExposure[full];
  if(official&&official.total===st.total)return official.count;
 
- // Local history fallback: aggregate every stored representation that resolves
- // uniquely to this player. computeStats canonicalizes most aliases, but old
- // records can still be split between "chase brown" and "brown".
- let total=0,found=false;
- for(const [stored,count] of st.map.entries()){
-  if(stored===full){total+=count;found=true;continue}
-  if(!aliasKeys(full).includes(stored))continue;
-  const universe=Object.keys(cached.playerUniverse);
-  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(stored)))];
-  if(matches.length===1&&matches[0]===full){total+=count;found=true}
+ // Otherwise count COMPLETED DRAFTS directly. A player can count at most once
+ // per draft. This avoids broken aggregate buckets, double counting, and stale
+ // canonicalization. Short names are accepted only when unique on the slate.
+ const universe=Object.keys(cached.playerUniverse);
+ const rawMatchesFull=raw=>{
+  raw=norm(raw);if(!raw)return false;
+  if(raw===full)return true;
+  if(!aliasKeys(full).includes(raw))return false;
+  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(raw)))];
+  return matches.length===1&&matches[0]===full;
+ };
+ let count=0;
+ for(const d of cached.drafts){
+  if((cached.sport!=='ALL'&&(d.sport||'UNKNOWN')!==cached.sport)||(cached.selected!=='ALL'&&d.contest!==cached.selected))continue;
+  if((d.players||[]).some(p=>rawMatchesFull(p.name)))count++;
  }
- return found?Math.min(total,st.total):0;
+ return count;
 }
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
