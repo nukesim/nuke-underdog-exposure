@@ -222,6 +222,34 @@ function pairCount(a,b){
  }
  return 0;
 }
+function duplicateState(drafted){
+ const hist=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
+ if(!drafted.length||!hist.length)return {best:0,total:drafted.length,exact:false,matches:[],draft:null};
+ let best={best:0,total:drafted.length,exact:false,matches:[],draft:null};
+ for(const d of hist){
+  const old=(d.players||[]).map(p=>clean(p.name)).filter(Boolean);
+  const matches=drafted.filter(p=>old.some(n=>namesMatch(p.name,n))).map(p=>p.name);
+  if(matches.length>best.best)best={best:matches.length,total:drafted.length,exact:drafted.length>=6&&matches.length===drafted.length&&old.length===drafted.length,matches,draft:d};
+ }
+ return best;
+}
+function duplicateCandidate(name,drafted){
+ if(!drafted.length)return {max:0,bonus:0,label:''};
+ const hist=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
+ let max=0;
+ for(const d of hist){
+  const old=(d.players||[]).map(p=>clean(p.name)).filter(Boolean);
+  if(!old.some(n=>namesMatch(name,n)))continue;
+  let n=1;
+  for(const p of drafted)if(old.some(x=>namesMatch(p.name,x)))n++;
+  max=Math.max(max,n);
+ }
+ // As a candidate approaches an old full lineup, actively push it down.
+ // 5/6 is a major warning; 4/6 is worth surfacing but not an automatic veto.
+ const bonus=max>=6?-60:max===5?-34:max===4?-14:0;
+ const label=max>=6?'FULL DUPLICATE':max===5?'DUP PATH 5/6':max===4?'DUP PATH 4/6':'';
+ return {max,bonus,label};
+}
 function rosterState(drafted){
  const counts={QB:0,RB:0,WR:0,TE:0};for(const p of drafted)if(counts[p.pos]!==undefined)counts[p.pos]++;
  const qb=drafted.find(p=>p.pos==='QB')||null;
@@ -280,11 +308,12 @@ function candidateSignals(name,meta,drafted,total,state){
  const covered=rels.length,sum=rels.reduce((s,x)=>s+x.count,0),best=rels[0]?.count||0,pickCount=Math.max(1,drafted.length);
  const avgPairRate=total?sum/(total*pickCount):0,coverageRate=covered/pickCount;
  const corrBonus=tag?.kind==='qb-stack'?34:tag?.kind==='bringback'?12:tag?.kind==='same-team'?3:0;
- const needBonus=positionNeed(meta,state),value=adpValue(meta,drafted,state),rarity=raritySignal(allRels,drafted,total),balance=exposureBalance(exposure,total);
- // ADP value + correlation + roster need lead. Rarity is a meaningful tiebreaker:
- // we want access to combinations the room normally never lets us build.
- const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*34+coverageRate*15+corrBonus+needBonus+value.bonus+rarity.bonus+balance.bonus)));
- return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus,value,rarity,balance};
+ const needBonus=positionNeed(meta,state),value=adpValue(meta,drafted,state),rarity=raritySignal(allRels,drafted,total),balance=exposureBalance(exposure,total),dup=duplicateCandidate(name,drafted);
+ // ADP value + correlation + roster need lead. Rarity is a meaningful tiebreaker.
+ // Duplicate-path penalties become aggressive only when a candidate moves us close
+ // to recreating an existing full lineup in this tournament.
+ const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*34+coverageRate*15+corrBonus+needBonus+value.bonus+rarity.bonus+balance.bonus+dup.bonus)));
+ return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus,value,rarity,balance,dup};
 }
 function availableCandidates(){
  const drafted=draftedNFL(),state=rosterState(drafted),hasQB=!!state.qb;
@@ -305,20 +334,22 @@ function renderComboPanel(){
   panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · TOP COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
   return;
  }
- const state=rosterState(drafted);
+ const state=rosterState(drafted),dupe=duplicateState(drafted);
  const candidates=availableCandidates().sort((a,b)=>b.fit-a.fit||b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)).slice(0,10);
  const picked=drafted.map(x=>x.name).join(' + ');
  const build='QB '+state.counts.QB+' · RB '+state.counts.RB+' · WR '+state.counts.WR+' · TE '+state.counts.TE;
  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
   '<div class="nuke-roster-intel"><span>'+build+'</span><b class="'+state.stackClass+'">'+state.stackText+'</b></div>'+
+  '<div class="nuke-duplicate '+(dupe.exact?'danger':dupe.best>=4?'warn':'safe')+'"><b>'+(dupe.exact?'⚠ FULL LINEUP DUPLICATE':dupe.best>=4?'DUPLICATE WATCH · '+dupe.best+'/'+drafted.length:'UNIQUE BUILD · closest '+dupe.best+'/'+drafted.length)+'</b><span>'+(dupe.matches.length?dupe.matches.join(' + '):'No matching prior core')+'</span></div>'+
   '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
   candidates.map(x=>{
    const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
    const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
    const value=x.value?.bonus?'<em class="nuke-next-tag adp-fall">'+x.value.label+'</em>':'';
    const rare=x.rarity?.bonus?'<em class="nuke-next-tag rare">'+x.rarity.label+'</em>':'';
-   const bal=x.balance?.label?'<em class="nuke-next-tag exposure">'+x.balance.label+'</em>':'',relationship=rel||'No prior combo with my picks';
-   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+value+rare+bal+'<span>'+relationship+'</span></div>'+
+   const bal=x.balance?.label?'<em class="nuke-next-tag exposure">'+x.balance.label+'</em>':'';
+   const dup=x.dup?.label?'<em class="nuke-next-tag duplicate">'+x.dup.label+'</em>':'',relationship=rel||'No prior combo with my picks';
+   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+value+rare+bal+dup+'<span>'+relationship+'</span></div>'+
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
