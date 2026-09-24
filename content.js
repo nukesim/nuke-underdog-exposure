@@ -209,21 +209,24 @@ async function captureOfficialExposure(){
 }
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
+ // Underdog's exposure page is authoritative for full-name matches. Do not
+ // require its denominator to equal our locally captured tournament count:
+ // the exposure page can update to 41 drafts before the local scraper does.
  const official=cached.officialExposure[full];
- if(official&&official.total===st.total)return official.count;
+ if(official)return official.count;
  if(st.map.has(full))return st.map.get(full);
- const aliases=aliasKeys(name);
- for(const key of aliases){
-  if(key===full||!key.includes(' ')||!st.map.has(key))continue;
-  return st.map.get(key);
- }
- const surname=aliases.at(-1);
- if(!surname||!st.map.has(surname))return 0;
- // Never decide surname uniqueness from the CURRENT filtered/search view.
- // Use the persistent slate universe we've observed across the draft instead.
+
+ // Historical completed cards may contain shortened names. Only use a
+ // multi-token alias when it resolves to exactly one player in the persistent
+ // slate universe. Never assign a bare surname (e.g. "Wilson") to a full name.
+ const aliases=aliasKeys(name).filter(key=>key!==full&&key.includes(' '));
  const universe=Object.keys(cached.playerUniverse);
- const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(surname)))];
- return matches.length===1?st.map.get(surname):0;
+ for(const key of aliases){
+  if(!st.map.has(key))continue;
+  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(key)))];
+  if(matches.length===1&&matches[0]===full)return st.map.get(key);
+ }
+ return 0;
 }
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
