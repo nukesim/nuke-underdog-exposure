@@ -204,23 +204,39 @@ async function captureOfficialExposure(){
  const totalMatch=bodyText.match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
  const total=Number(totalMatch?.[1]||0);if(!total)return;
  const next={...cached.officialExposure};let changed=false;
- // Exposure rows are nested fairly deeply in Underdog's current UI. Find the
- // player-name leaf, then walk far enough to reach the row containing Drafted %.
+
+ // Parse actual player result rows, not arbitrary ancestor text. The exposure
+ // page row contains the player name plus Entry fees / Drafted labels. This
+ // prevents a player's name from being paired with a nearby player's percent.
  for(const el of document.querySelectorAll('span,div,p')){
   if(el.childElementCount||el.offsetParent===null)continue;
   const name=clean(el.textContent);
   if(name.length<4||name.length>45||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
   let row=el,hit=null;
-  for(let i=0;i<12&&row;i++,row=row.parentElement){
+  for(let i=0;i<10&&row;i++,row=row.parentElement){
    const t=clean(row.innerText);
-   if(t.length>500)break;
-   const m=t.match(/(\d+(?:\.\d+)?)%\s*(?:Drafted)?/i);
+   if(t.length>350)break;
+   if(!/Entry fees/i.test(t)||!/Drafted/i.test(t))continue;
+   // The current Underdog row ends with e.g. "$80 19.0% Entry fees Drafted".
+   // Require the percentage to be immediately associated with Drafted.
+   let m=t.match(/(\d+(?:\.\d+)?)%\s*(?:Entry fees\s*)?Drafted\b/i);
+   if(!m){
+    const parts=t.split(/\s+/);
+    const draftedAt=parts.findIndex(x=>/^Drafted$/i.test(x));
+    if(draftedAt>=0){
+     for(let j=draftedAt-1;j>=Math.max(0,draftedAt-4);j--){
+      const pm=parts[j].match(/^(\d+(?:\.\d+)?)%$/);
+      if(pm){m=pm;break}
+     }
+    }
+   }
    if(m){hit=Number(m[1]);break}
   }
   if(!Number.isFinite(hit))continue;
   const key=norm(name),count=Math.round(total*hit/100);
   const val={count,total,pct:hit,capturedAt:Date.now()};
-  if(JSON.stringify(next[key])!==JSON.stringify(val)){next[key]=val;changed=true}
+  const prev=next[key];
+  if(!prev||prev.count!==val.count||prev.total!==val.total||prev.pct!==val.pct){next[key]=val;changed=true}
  }
  if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}));scheduleRender(0)}
 }
