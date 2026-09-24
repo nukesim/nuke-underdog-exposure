@@ -176,11 +176,16 @@ function correlationTag(meta,drafted){
 }
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
- // Exact full-name match always wins.
  if(st.map.has(full))return st.map.get(full);
- // Completed cards sometimes store only a surname. A surname is safe only when
- // it uniquely identifies ONE live player. Never let "Wilson" bleed into every Wilson.
- const surname=aliasKeys(name).at(-1);
+ const aliases=aliasKeys(name);
+ // Prefer a qualified multi-token alias before ever falling back to surname.
+ // This preserves suffix identities such as "Walker III" even when another
+ // Walker is in the slate, while still preventing "Wilson" from bleeding.
+ for(const key of aliases){
+  if(key===full||!key.includes(' ')||!st.map.has(key))continue;
+  return st.map.get(key);
+ }
+ const surname=aliases.at(-1);
  if(!surname||!st.map.has(surname))return 0;
  const live=findPlayerRows().map(x=>norm(x.name)).filter(Boolean);
  const matches=[...new Set(live.filter(n=>aliasKeys(n).includes(surname)))];
