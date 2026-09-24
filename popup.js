@@ -21,7 +21,7 @@ function playerStats(ds){
  // Merge them into the popup so popup and live badges use the same source.
  for(const [key,o] of Object.entries(officialExposure||{})){
   if(!o||!Number.isFinite(Number(o.count)))continue;
-  if(Math.abs(Number(o.total||0)-ds.length)>1)continue;
+  if(Number(o.total||0)!==Number(ds.length||0))continue;
   const name=o.name||playerUniverse[key]?.name||m.get(key)?.name||key.replace(/\b\w/g,x=>x.toUpperCase());
   m.set(key,{name,count:Number(o.count),official:true});
  }
