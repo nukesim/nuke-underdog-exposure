@@ -230,7 +230,7 @@ async function captureOfficialExposure(){
     !/^(Entry fees|Drafted|QB|RB|WR|TE)$/i.test(x));
   if(!name)continue;
   const key=norm(name),count=Math.round(total*hit/100);
-  const val={count,total,pct:hit,capturedAt:Date.now()};
+  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now()};
   const prev=next[key];
   if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit){next[key]=val;changed=true}
  }
@@ -487,7 +487,10 @@ chrome.storage.onChanged.addListener((changes,area)=>{
  if(changes.officialExposure)cached.officialExposure=changes.officialExposure.newValue||{};
  if(changes.playerUniverse)cached.playerUniverse=changes.playerUniverse.newValue||{};
  if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';
- if(changes.exposureScope)cached.sport=changes.exposureScope.newValue?.sport||'ALL';cached.selected=changes.exposureScope.newValue?.contest||'ALL';
+ if(changes.exposureScope){
+  cached.sport=changes.exposureScope.newValue?.sport||'ALL';
+  cached.selected=changes.exposureScope.newValue?.contest||'ALL';
+ }
  if(changes.lastSelectedContest&&!changes.exposureScope)cached.selected=changes.lastSelectedContest.newValue||'ALL';
  computeStats();scheduleRender(0);
 });
