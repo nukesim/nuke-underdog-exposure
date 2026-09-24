@@ -233,10 +233,16 @@ async function rememberPlayerUniverse(rows){
  let changed=false;
  for(const {name,row} of rows){
   const meta=nflRowMeta(row),key=norm(name);if(!key)continue;
-  const next={name:clean(name),pos:meta.pos||'',team:meta.team||''};
-  if(JSON.stringify(cached.playerUniverse[key])!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
+  const prev=cached.playerUniverse[key]||{};
+  // Monotonic enrichment: scrolling/virtualized rows may briefly omit metadata.
+  // Never replace known identity fields with blanks from a recycled DOM node.
+  const next={name:clean(name)||prev.name||'',pos:meta.pos||prev.pos||'',team:meta.team||prev.team||''};
+  if(JSON.stringify(prev)!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
  }
- if(changed){computeStats();await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}));scheduleRender(0)}
+ // Do not trigger another render here. renderBadges already has the exact rows
+ // for this frame; a second asynchronous render during scroll caused valid badges
+ // to be replaced by transient 0/45 values.
+ if(changed)await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
@@ -546,7 +552,8 @@ chrome.storage.onChanged.addListener((changes,area)=>{
   cached.selected=changes.exposureScope.newValue?.contest||'ALL';
  }
  if(changes.lastSelectedContest&&!changes.exposureScope)cached.selected=changes.lastSelectedContest.newValue||'ALL';
- computeStats();scheduleRender(0);
+ const affectsExposure=!!(changes.drafts||changes.officialExposure||changes.lastSelectedSport||changes.exposureScope||changes.lastSelectedContest);
+ if(affectsExposure){computeStats();scheduleRender(0)}
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
  if(msg?.type==='NUKE_FORCE_SCAN'){(async()=>{await captureCompleted();await hydrate();send({ok:true,total:cached.drafts.length})})();return true}
