@@ -273,9 +273,9 @@ function pairCount(a,b){
  return 0;
 }
 function buildStyleStats(){
- // Portfolio mix is intentionally independent of the current live roster.
- // It answers: "Of my completed entries in this tournament, how often did I
- // finish with each construction?" Current picks never change these numbers.
+ // Portfolio mix only: completed entries in the selected tournament. Current
+ // live picks never affect these values. Older completed captures stored names
+ // without positions, so recover position from the persistent slate universe.
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const styles=[
   {key:'1QB / 2RB / 2WR / 1TE',want:{QB:1,RB:2,WR:2,TE:1}},
@@ -283,16 +283,23 @@ function buildStyleStats(){
   {key:'1QB / 1RB / 2WR / 2TE',want:{QB:1,RB:1,WR:2,TE:2}}
  ];
  const out=styles.map(s=>({...s,count:0}));
+ const inferPos=p=>{
+  let pos=String(p.pos||p.position||'').toUpperCase();
+  if(!pos){
+   const raw=String(p.slot||p.rosterPosition||p.position_name||'').toUpperCase();
+   pos=['QB','RB','WR','TE'].find(x=>raw.includes(x))||'';
+  }
+  if(pos)return pos;
+  const name=clean(p.name),full=norm(name);
+  if(cached.playerUniverse[full]?.pos)return cached.playerUniverse[full].pos;
+  const aliases=aliasKeys(name);
+  const matches=Object.values(cached.playerUniverse).filter(u=>u?.pos&&aliases.some(a=>aliasKeys(u.name).includes(a)));
+  const positions=[...new Set(matches.map(u=>u.pos).filter(Boolean))];
+  return positions.length===1?positions[0]:'';
+ };
  for(const d of ds){
   const counts={QB:0,RB:0,WR:0,TE:0};
-  for(const p of (d.players||[])){
-   let pos=String(p.pos||p.position||'').toUpperCase();
-   if(!pos){
-    const raw=String(p.slot||p.rosterPosition||p.position_name||'').toUpperCase();
-    pos=['QB','RB','WR','TE'].find(x=>raw.includes(x))||'';
-   }
-   if(counts[pos]!==undefined)counts[pos]++;
-  }
+  for(const p of (d.players||[])){const pos=inferPos(p);if(counts[pos]!==undefined)counts[pos]++}
   for(const s of out)if(Object.keys(s.want).every(k=>counts[k]===s.want[k]))s.count++;
  }
  return {total:ds.length,styles:out};
