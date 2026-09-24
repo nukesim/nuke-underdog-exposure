@@ -71,15 +71,21 @@ async function ingestStructured(data,kind='',url=''){
 window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
- // Official Exposure full-name records are stable portfolio identity.
- if(cached.officialExposure[raw]?.name)return norm(cached.officialExposure[raw].name);
+ const parts=tokens(name);
 
- // Legacy completed cards may contain only a surname. Resolve it ONLY against
- // official full-name exposure records. Never use the currently visited player
- // tabs as an identity source, because that would make ownership tab-dependent.
- const officialNames=[...new Set(Object.values(cached.officialExposure)
-  .map(v=>v?.name).filter(Boolean).map(norm))];
- const matches=officialNames.filter(full=>aliasKeys(full).includes(raw));
+ // Exact full names from completed drafts are already stable identities and must
+ // never be discarded just because an official Exposure record is unavailable.
+ if(parts.length>=2)return raw;
+
+ // Legacy completed cards sometimes stored only a surname. Resolve those only
+ // against stable full-name identities already present in the completed portfolio
+ // plus official Exposure names. Never consult the currently visible player tab.
+ const stableNames=new Set();
+ for(const d of cached.drafts)for(const p of (d.players||[])){
+  const n=norm(p.name);if(tokens(p.name).length>=2)stableNames.add(n);
+ }
+ for(const v of Object.values(cached.officialExposure))if(v?.name&&tokens(v.name).length>=2)stableNames.add(norm(v.name));
+ const matches=[...stableNames].filter(full=>aliasKeys(full).includes(raw));
  return matches.length===1?matches[0]:raw;
 }
 function computeStats(){
