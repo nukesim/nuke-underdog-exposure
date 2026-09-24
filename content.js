@@ -121,7 +121,11 @@ function nflRowMeta(row){
  const t=clean(row.innerText);
  const pos=t.match(/\b(QB|RB|WR|TE)\d*\b/i)?.[1]?.toUpperCase()||'';
  const game=t.match(/\b([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})\b/i);
- return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||''};
+ const nums=[...t.matchAll(/\b(\d+(?:\.\d+)?)\b/g)].map(m=>Number(m[1])).filter(Number.isFinite);
+ // Underdog player rows expose ADP before projection; keep it with the candidate
+ // so early-round value can react to a player falling past his normal draft slot.
+ const adp=nums.length>=2?nums[nums.length-2]:null;
+ return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||'',adp};
 }
 function draftedNFL(){
  const root=playerPoolRoot(),out=[],seen=new Set();
@@ -236,6 +240,21 @@ function positionNeed(meta,state){
  if(meta.pos==='RB')return state.counts.RB<2?7:state.counts.RB<3?2:-3;
  return 0;
 }
+function adpValue(meta,drafted,state){
+ const adp=Number(meta.adp);if(!Number.isFinite(adp)||adp<=0)return {bonus:0,fall:0,label:''};
+ const nextPick=drafted.length+1,fall=Math.max(0,nextPick-adp);
+ if(drafted.length>=4||fall<1)return {bonus:0,fall,label:''};
+ // Rounds 1-4: reward unusual ADP slides when the player's position is still useful.
+ // This intentionally creates access to combinations that normally do not reach
+ // the same drafter, while never overriding a closed QB slot.
+ const open=meta.pos==='QB'?state.counts.QB===0:
+  meta.pos==='RB'?state.counts.RB<2:
+  meta.pos==='WR'?state.counts.WR<3:
+  meta.pos==='TE'?state.counts.TE<1:true;
+ if(!open)return {bonus:0,fall,label:''};
+ const bonus=Math.min(38,Math.round(fall*7));
+ return {bonus,fall,label:'ADP FALL +'+fall.toFixed(fall%1?1:0)};
+}
 function candidateSignals(name,meta,drafted,total,state){
  const allRels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).sort((a,b)=>b.count-a.count);
  const rels=allRels.filter(x=>x.count>0),exposure=exposureCount(name,cached.stats),tag=correlationTag(meta,drafted);
@@ -244,9 +263,9 @@ function candidateSignals(name,meta,drafted,total,state){
  // Correlation and actual roster need now lead the score; historical pairing remains useful
  // but cannot bury an obvious QB-stack requirement.
  const corrBonus=tag?.kind==='qb-stack'?34:tag?.kind==='bringback'?12:tag?.kind==='same-team'?3:0;
- const needBonus=positionNeed(meta,state);
- const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*48+coverageRate*20+corrBonus+needBonus)));
- return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus};
+ const needBonus=positionNeed(meta,state),value=adpValue(meta,drafted,state);
+ const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*42+coverageRate*18+corrBonus+needBonus+value.bonus)));
+ return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus,value};
 }
 function availableCandidates(){
  const drafted=draftedNFL(),state=rosterState(drafted),hasQB=!!state.qb;
@@ -276,8 +295,9 @@ function renderComboPanel(){
   '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
   candidates.map(x=>{
    const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
-   const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'',relationship=rel||'No prior combo with my picks';
-   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+'<span>'+relationship+'</span></div>'+
+   const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
+   const value=x.value?.bonus?'<em class="nuke-next-tag adp-fall">'+x.value.label+'</em>':'',relationship=rel||'No prior combo with my picks';
+   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+value+'<span>'+relationship+'</span></div>'+
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
