@@ -273,6 +273,9 @@ function pairCount(a,b){
  return 0;
 }
 function buildStyleStats(){
+ // Portfolio mix is intentionally independent of the current live roster.
+ // It answers: "Of my completed entries in this tournament, how often did I
+ // finish with each construction?" Current picks never change these numbers.
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const styles=[
   {key:'1QB / 2RB / 2WR / 1TE',want:{QB:1,RB:2,WR:2,TE:1}},
@@ -285,7 +288,6 @@ function buildStyleStats(){
   for(const p of (d.players||[])){
    let pos=String(p.pos||p.position||'').toUpperCase();
    if(!pos){
-    // Completed-page fallback: infer position from any structured metadata we captured.
     const raw=String(p.slot||p.rosterPosition||p.position_name||'').toUpperCase();
     pos=['QB','RB','WR','TE'].find(x=>raw.includes(x))||'';
    }
@@ -414,7 +416,7 @@ function renderComboPanel(){
  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
   '<div class="nuke-roster-intel"><span>'+build+'</span><b class="'+state.stackClass+'">'+state.stackText+'</b></div>'+
   '<div class="nuke-duplicate '+(dupe.exact?'danger':dupe.best>=4?'warn':'safe')+'"><b>'+(dupe.exact?'⚠ FULL LINEUP DUPLICATE':dupe.best>=4?'DUPLICATE WATCH · '+dupe.best+'/'+drafted.length:'UNIQUE BUILD · closest '+dupe.best+'/'+drafted.length)+'</b><span>'+(dupe.matches.length?dupe.matches.join(' + '):'No matching prior core')+'</span></div>'+
-  '<div class="nuke-build-mix">'+builds.styles.map(s=>'<span><b>'+s.key+'</b><em>'+s.count+'/'+builds.total+' · '+(builds.total?Math.round(s.count/builds.total*100):0)+'%</em></span>').join('')+'</div>'+
+  '<div class="nuke-build-mix" title="Completed tournament portfolio only — independent of current picks">'+builds.styles.map(s=>'<span><b>'+s.key+'</b><em>'+s.count+'/'+builds.total+' · '+(builds.total?Math.round(s.count/builds.total*100):0)+'%</em></span>').join('')+'</div>'+
   '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
   candidates.map(x=>{
    const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
