@@ -200,25 +200,27 @@ async function rememberPlayerUniverse(rows){
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
- const totalMatch=(document.body.innerText||'').match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
+ const bodyText=document.body.innerText||'';
+ const totalMatch=bodyText.match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
  const total=Number(totalMatch?.[1]||0);if(!total)return;
  const next={...cached.officialExposure};let changed=false;
+ // Exposure rows are nested fairly deeply in Underdog's current UI. Find the
+ // player-name leaf, then walk far enough to reach the row containing Drafted %.
  for(const el of document.querySelectorAll('span,div,p')){
   if(el.childElementCount||el.offsetParent===null)continue;
   const name=clean(el.textContent);
   if(name.length<4||name.length>45||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
-  let row=el;
-  for(let i=0;i<5&&row;i++,row=row.parentElement){
+  let row=el,hit=null;
+  for(let i=0;i<12&&row;i++,row=row.parentElement){
    const t=clean(row.innerText);
+   if(t.length>500)break;
    const m=t.match(/(\d+(?:\.\d+)?)%\s*(?:Drafted)?/i);
-   if(!m)continue;
-   const pct=Number(m[1]);if(!Number.isFinite(pct))break;
-   const count=Math.round(total*pct/100),key=norm(name);
-   if(!key)break;
-   const val={count,total,pct,capturedAt:Date.now()};
-   if(JSON.stringify(next[key])!==JSON.stringify(val)){next[key]=val;changed=true}
-   break;
+   if(m){hit=Number(m[1]);break}
   }
+  if(!Number.isFinite(hit))continue;
+  const key=norm(name),count=Math.round(total*hit/100);
+  const val={count,total,pct:hit,capturedAt:Date.now()};
+  if(JSON.stringify(next[key])!==JSON.stringify(val)){next[key]=val;changed=true}
  }
  if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}));scheduleRender(0)}
 }
@@ -231,15 +233,15 @@ function exposureCount(name,st){
  if(official)return official.count;
  if(st.map.has(full))return st.map.get(full);
 
- // Historical completed cards may contain shortened names. Only use a
- // multi-token alias when it resolves to exactly one player in the persistent
- // slate universe. Never assign a bare surname (e.g. "Wilson") to a full name.
- const aliases=aliasKeys(name).filter(key=>key!==full&&key.includes(' '));
+ // Resolve an old shortened stored name only if it uniquely identifies THIS
+ // full player across the persistent slate. This recovers "Washington" ->
+ // Parker Washington while still refusing ambiguous "Wilson".
  const universe=Object.keys(cached.playerUniverse);
- for(const key of aliases){
-  if(!st.map.has(key))continue;
-  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(key)))];
-  if(matches.length===1&&matches[0]===full)return st.map.get(key);
+ for(const [stored,count] of st.map.entries()){
+  if(stored===full||stored.includes(' '))continue;
+  if(!aliasKeys(full).includes(stored))continue;
+  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(stored)))];
+  if(matches.length===1&&matches[0]===full)return count;
  }
  return 0;
 }
