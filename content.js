@@ -24,12 +24,51 @@ function harvestStructured(root){
   for(const x of Object.values(v))walk(x,depth+1);
  };walk(root);return found
 }
-async function ingestStructured(data){
- const found=harvestStructured(data);if(!found.length)return;
- const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
- for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();scheduleRender(0)
+function harvestOfficialExposureStructured(root){
+ const out=[];const seen=new WeakSet();
+ const walk=(v,depth=0,totalHint=0)=>{
+  if(!v||depth>10||typeof v!=='object')return;
+  if(seen.has(v))return;seen.add(v);
+  if(Array.isArray(v)){for(const x of v)walk(x,depth+1,totalHint);return}
+  const localTotal=Number(v.total_drafts||v.draft_count||v.drafts_count||v.total_entries||v.entry_count||totalHint||0);
+  const p=v.player||v.appearance||v;
+  const name=clean(p?.full_name||p?.player_name||p?.name||v.player_name||v.full_name||'');
+  const pctRaw=v.drafted_percentage??v.drafted_percent??v.drafted_pct??v.exposure_percentage??v.exposure_percent??v.exposure_pct;
+  const countRaw=v.drafted_count??v.times_drafted??v.exposure_count??v.count;
+  let pct=Number(pctRaw),count=Number(countRaw);
+  if(Number.isFinite(pct)&&pct>0&&pct<=1)pct*=100;
+  if(name&&tokens(name).length>=2&&(Number.isFinite(pct)||Number.isFinite(count))){
+   if(!Number.isFinite(count)&&localTotal&&Number.isFinite(pct))count=Math.round(localTotal*pct/100);
+   if(!Number.isFinite(pct)&&localTotal&&Number.isFinite(count))pct=count/localTotal*100;
+   if(Number.isFinite(count)&&Number.isFinite(pct))out.push({name:clean(name),count,total:localTotal,pct});
+  }
+  for(const x of Object.values(v))walk(x,depth+1,localTotal);
+ };
+ walk(root);return out;
 }
-window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data)});
+async function ingestStructured(data,kind='',url=''){
+ const found=harvestStructured(data);
+ if(found.length){
+  const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
+  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();
+ }
+ if(/exposure/i.test(String(url||''))){
+  const hits=harvestOfficialExposureStructured(data);
+  if(hits.length){
+   const next={...cached.officialExposure};let changed=false;
+   for(const x of hits){
+    const total=Number(x.total||cached.stats?.total||0);
+    if(!total||x.count<0||x.count>total)continue;
+    const key=norm(x.name),val={name:x.name,count:Number(x.count),total,pct:Number(x.pct),capturedAt:Date.now(),source:'underdog-exposure-api'};
+    const prev=next[key];
+    if(!prev||prev.count!==val.count||prev.total!==val.total||prev.name!==val.name){next[key]=val;changed=true}
+   }
+   if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}))}
+  }
+ }
+ scheduleRender(0)
+}
+window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
  if(cached.playerUniverse[raw])return raw;
