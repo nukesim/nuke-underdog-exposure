@@ -206,33 +206,48 @@ async function captureOfficialExposure(){
  const total=Number(totalMatch?.[1]||0);if(!total)return;
  const next={...cached.officialExposure};let changed=false;
 
- // Read each visible exposure card as one atomic row. We deliberately require
- // exactly one player-like name and one drafted percentage inside the same
- // compact card so percentages cannot bleed between neighboring rows.
+ // The official Underdog Exposure page is the source of truth. Parse the
+ // smallest visible row containing Name + position/team + Entry fees + Drafted.
+ // Do NOT infer ownership from completed-card surnames here.
  const candidates=[...document.querySelectorAll('div')].filter(row=>{
   if(row.offsetParent===null)return false;
-  const t=clean(row.innerText),r=row.getBoundingClientRect();
-  return r.height>=45&&r.height<=95&&r.width>=250&&
-   /Entry fees/i.test(t)&&/Drafted/i.test(t)&&/\d+(?:\.\d+)?%/.test(t)&&
-   /\b(QB|RB|WR|TE)\d*\b/i.test(t);
+  const lines=(row.innerText||'').split('\n').map(clean).filter(Boolean);
+  const r=row.getBoundingClientRect();
+  return r.width>=220&&r.height>=35&&r.height<=120&&
+   lines.some(x=>/^Drafted$/i.test(x))&&
+   lines.some(x=>/^Entry fees$/i.test(x))&&
+   lines.some(x=>/^\d+(?:\.\d+)?%$/.test(x))&&
+   lines.some(x=>/^(QB|RB|WR|TE)\d*$/i.test(x));
  });
- // Prefer the smallest qualifying container for each physical row.
  const rows=candidates.filter(row=>![...row.children].some(ch=>{
-  const t=clean(ch.innerText),r=ch.getBoundingClientRect();
-  return r.height>=40&&r.height<=95&&/Entry fees/i.test(t)&&/Drafted/i.test(t)&&/\d+(?:\.\d+)?%/.test(t);
+  if(ch.offsetParent===null)return false;
+  const l=(ch.innerText||'').split('\n').map(clean).filter(Boolean);
+  return l.some(x=>/^Drafted$/i.test(x))&&l.some(x=>/^Entry fees$/i.test(x))&&l.some(x=>/^\d+(?:\.\d+)?%$/.test(x));
  }));
  for(const row of rows){
   const lines=(row.innerText||'').split('\n').map(clean).filter(Boolean);
-  const pctToken=lines.find(x=>/^(\d+(?:\.\d+)?)%$/.test(x));
-  const hit=Number(pctToken?.match(/\d+(?:\.\d+)?/)?.[0]);
-  if(!Number.isFinite(hit))continue;
-  const name=lines.find(x=>x.length>=4&&x.length<=45&&/^[A-Za-zÀ-ÿ.' -]+$/.test(x)&&
-    !/^(Entry fees|Drafted|QB|RB|WR|TE)$/i.test(x));
+  const pctToken=lines.find(x=>/^\d+(?:\.\d+)?%$/.test(x));
+  const hit=Number(pctToken?.replace('%',''));if(!Number.isFinite(hit))continue;
+  const posIndex=lines.findIndex(x=>/^(QB|RB|WR|TE)\d*$/i.test(x));
+  let name='';
+  if(posIndex>0){
+   for(let i=posIndex-1;i>=0;i--){
+    const x=lines[i];
+    if(x.length>=4&&x.length<=45&&/^[A-Za-zÀ-ÿ.' -]+$/.test(x)&&
+      !/^(Players?|Entry fees|Drafted|Teams?|ADP|Proj)$/i.test(x)){name=x;break}
+   }
+  }
   if(!name)continue;
-  const key=norm(name),count=Math.round(total*hit/100);
-  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now()};
+  const key=norm(name);
+  // Require a real full name for authoritative identity. A bare surname can
+  // never overwrite an exact player's record.
+  if(tokens(name).length<2)continue;
+  const count=Math.round(total*hit/100);
+  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now(),source:'underdog-exposure'};
   const prev=next[key];
-  if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit){next[key]=val;changed=true}
+  if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit||prev.name!==val.name){
+   next[key]=val;changed=true;
+  }
  }
  if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}));scheduleRender(0)}
 }
@@ -243,7 +258,7 @@ function exposureCount(name,st){
  // capture. Accept the newest value even if its denominator is one draft behind
  // the local tracker; the numerator is still the user's actual ownership count.
  const official=cached.officialExposure[full];
- if(official&&official.count>=0&&Math.abs((official.total||0)-st.total)<=1)return official.count;
+ if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
 
  // Fallback: count completed drafts directly. A player contributes at most once
  // per draft. Historical short names are accepted only if unique on this slate.
