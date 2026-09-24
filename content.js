@@ -206,38 +206,33 @@ async function captureOfficialExposure(){
  const total=Number(totalMatch?.[1]||0);if(!total)return;
  const next={...cached.officialExposure};let changed=false;
 
- // Parse actual player result rows, not arbitrary ancestor text. The exposure
- // page row contains the player name plus Entry fees / Drafted labels. This
- // prevents a player's name from being paired with a nearby player's percent.
- for(const el of document.querySelectorAll('span,div,p')){
-  if(el.childElementCount||el.offsetParent===null)continue;
-  const name=clean(el.textContent);
-  if(name.length<4||name.length>45||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
-  let row=el,hit=null;
-  for(let i=0;i<10&&row;i++,row=row.parentElement){
-   const t=clean(row.innerText);
-   if(t.length>350)break;
-   if(!/Entry fees/i.test(t)||!/Drafted/i.test(t))continue;
-   // The current Underdog row ends with e.g. "$80 19.0% Entry fees Drafted".
-   // Require the percentage to be immediately associated with Drafted.
-   let m=t.match(/(\d+(?:\.\d+)?)%\s*(?:Entry fees\s*)?Drafted\b/i);
-   if(!m){
-    const parts=t.split(/\s+/);
-    const draftedAt=parts.findIndex(x=>/^Drafted$/i.test(x));
-    if(draftedAt>=0){
-     for(let j=draftedAt-1;j>=Math.max(0,draftedAt-4);j--){
-      const pm=parts[j].match(/^(\d+(?:\.\d+)?)%$/);
-      if(pm){m=pm;break}
-     }
-    }
-   }
-   if(m){hit=Number(m[1]);break}
-  }
+ // Read each visible exposure card as one atomic row. We deliberately require
+ // exactly one player-like name and one drafted percentage inside the same
+ // compact card so percentages cannot bleed between neighboring rows.
+ const candidates=[...document.querySelectorAll('div')].filter(row=>{
+  if(row.offsetParent===null)return false;
+  const t=clean(row.innerText),r=row.getBoundingClientRect();
+  return r.height>=45&&r.height<=95&&r.width>=250&&
+   /Entry fees/i.test(t)&&/Drafted/i.test(t)&&/\d+(?:\.\d+)?%/.test(t)&&
+   /\b(QB|RB|WR|TE)\d*\b/i.test(t);
+ });
+ // Prefer the smallest qualifying container for each physical row.
+ const rows=candidates.filter(row=>![...row.children].some(ch=>{
+  const t=clean(ch.innerText),r=ch.getBoundingClientRect();
+  return r.height>=40&&r.height<=95&&/Entry fees/i.test(t)&&/Drafted/i.test(t)&&/\d+(?:\.\d+)?%/.test(t);
+ }));
+ for(const row of rows){
+  const lines=(row.innerText||'').split('\n').map(clean).filter(Boolean);
+  const pctToken=lines.find(x=>/^(\d+(?:\.\d+)?)%$/.test(x));
+  const hit=Number(pctToken?.match(/\d+(?:\.\d+)?/)?.[0]);
   if(!Number.isFinite(hit))continue;
+  const name=lines.find(x=>x.length>=4&&x.length<=45&&/^[A-Za-zÀ-ÿ.' -]+$/.test(x)&&
+    !/^(Entry fees|Drafted|QB|RB|WR|TE)$/i.test(x));
+  if(!name)continue;
   const key=norm(name),count=Math.round(total*hit/100);
   const val={count,total,pct:hit,capturedAt:Date.now()};
   const prev=next[key];
-  if(!prev||prev.count!==val.count||prev.total!==val.total||prev.pct!==val.pct){next[key]=val;changed=true}
+  if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit){next[key]=val;changed=true}
  }
  if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}));scheduleRender(0)}
 }
