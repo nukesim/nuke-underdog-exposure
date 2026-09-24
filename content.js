@@ -30,12 +30,27 @@ async function ingestStructured(data){
  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();scheduleRender(0)
 }
 window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data)});
+function canonicalHistoricalName(name){
+ const raw=norm(name);if(!raw)return '';
+ if(cached.playerUniverse[raw])return raw;
+ const universe=Object.keys(cached.playerUniverse);
+ // Old completed cards often stored only "Gibbs", "McCaffrey", etc.
+ // Upgrade those to a full name only when that alias identifies exactly one
+ // player in the entire saved slate. Ambiguous names such as Wilson stay raw.
+ const matches=[...new Set(universe.filter(full=>aliasKeys(full).includes(raw)))];
+ return matches.length===1?matches[0]:raw;
+}
 function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
- const map=new Map();
- for(const d of ds) for(const p of new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))) map.set(p,(map.get(p)||0)+1);
- const pairs=new Map();
- for(const d of ds){const names=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){const key=[names[i],names[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');pairs.set(key,(pairs.get(key)||0)+1)}}
+ const map=new Map(),pairs=new Map();
+ for(const d of ds){
+  const names=[...new Set((d.players||[]).map(x=>canonicalHistoricalName(x.name)).filter(Boolean))];
+  for(const name of names)map.set(name,(map.get(name)||0)+1);
+  for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
+   const key=[names[i],names[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
+   pairs.set(key,(pairs.get(key)||0)+1);
+  }
+ }
  cached.stats={total:ds.length,map,pairs};
 }
 async function hydrate(){
@@ -181,7 +196,7 @@ async function rememberPlayerUniverse(rows){
   const next={name:clean(name),pos:meta.pos||'',team:meta.team||''};
   if(JSON.stringify(cached.playerUniverse[key])!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
  }
- if(changed)await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}));
+ if(changed){computeStats();await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}));scheduleRender(0)}
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
