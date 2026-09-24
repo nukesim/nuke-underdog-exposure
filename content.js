@@ -299,26 +299,19 @@ async function captureOfficialExposure(){
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
 
- // Underdog Exposure is authoritative whenever we have an exact full-name
- // capture. Accept the newest value even if its denominator is one draft behind
- // the local tracker; the numerator is still the user's actual ownership count.
+ // Exact official Underdog exposure is the only authoritative override.
  const official=cached.officialExposure[full];
  if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
 
- // Fallback: count completed drafts directly. A player contributes at most once
- // per draft. Historical short names are accepted only if unique on this slate.
- const universe=Object.keys(cached.playerUniverse);
- const rawMatchesFull=raw=>{
-  raw=norm(raw);if(!raw)return false;
-  if(raw===full)return true;
-  if(!aliasKeys(full).includes(raw))return false;
-  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(raw)))];
-  return matches.length===1&&matches[0]===full;
- };
+ // Historical fallback must use canonical identity, not raw surnames. This keeps
+ // popup/live ownership identical when old completed cards stored "Williams",
+ // "Brown", etc. A short alias is accepted only when it resolves to exactly one
+ // player in the saved slate universe.
  let count=0;
  for(const d of cached.drafts){
   if((cached.sport!=='ALL'&&(d.sport||'UNKNOWN')!==cached.sport)||(cached.selected!=='ALL'&&d.contest!==cached.selected))continue;
-  if((d.players||[]).some(p=>rawMatchesFull(p.name)))count++;
+  const ids=new Set((d.players||[]).map(p=>canonicalHistoricalName(p.name)).filter(Boolean));
+  if(ids.has(full))count++;
  }
  return count;
 }
