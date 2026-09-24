@@ -74,3 +74,11 @@
   background:linear-gradient(90deg,rgba(56,217,150,.20),rgba(56,217,150,.07) 65%,transparent)!important;
   box-shadow:inset 3px 0 0 #55f0ad, inset 0 1px 0 rgba(85,240,173,.55), inset 0 -1px 0 rgba(85,240,173,.55), 0 0 13px rgba(56,217,150,.20)!important;
 }
+
+/* NFL roster-construction intelligence */
+.nuke-roster-intel{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin:2px 0 5px!important;padding:6px 8px!important;border:1px solid #21313d!important;border-radius:6px!important;background:#0a1118!important;font-size:9px!important;font-weight:800!important}
+.nuke-roster-intel>span{color:#8fa4b5!important;white-space:nowrap!important}
+.nuke-roster-intel>b{font-size:9px!important;text-align:right!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.nuke-roster-intel>b.need{color:#f5df00!important}
+.nuke-roster-intel>b.complete{color:#38d996!important;text-shadow:0 0 5px rgba(56,217,150,.28)!important}
+.nuke-roster-intel>b.open{color:#9fb2c2!important}
