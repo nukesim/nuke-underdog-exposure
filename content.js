@@ -71,33 +71,21 @@ async function ingestStructured(data,kind='',url=''){
 window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
- const parts=tokens(name);
-
- // Exact full names from completed drafts are already stable identities and must
- // never be discarded just because an official Exposure record is unavailable.
- if(parts.length>=2)return raw;
-
- // Legacy completed cards sometimes stored only a surname. Resolve those only
- // against stable full-name identities already present in the completed portfolio
- // plus official Exposure names. Never consult the currently visible player tab.
- const stableNames=new Set();
- for(const d of cached.drafts)for(const p of (d.players||[])){
-  const n=norm(p.name);if(tokens(p.name).length>=2)stableNames.add(n);
- }
- for(const v of Object.values(cached.officialExposure))if(v?.name&&tokens(v.name).length>=2)stableNames.add(norm(v.name));
- const matches=[...stableNames].filter(full=>aliasKeys(full).includes(raw));
+ if(cached.playerUniverse[raw])return raw;
+ const universe=Object.keys(cached.playerUniverse);
+ // Old completed cards often stored only "Gibbs", "McCaffrey", etc.
+ // Upgrade those to a full name only when that alias identifies exactly one
+ // player in the entire saved slate. Ambiguous names such as Wilson stay raw.
+ const matches=[...new Set(universe.filter(full=>aliasKeys(full).includes(raw)))];
  return matches.length===1?matches[0]:raw;
 }
 function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
-  const names=[...new Set((d.players||[]).map(x=>canonicalHistoricalName(x.name)).filter(Boolean))];
+  const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
   for(const name of names)map.set(name,(map.get(name)||0)+1);
-  const display=[...new Set((d.players||[]).map(x=>{
-   const k=canonicalHistoricalName(x.name);
-   return cached.officialExposure[k]?.name||cached.playerUniverse[k]?.name||clean(x.name);
-  }).filter(Boolean))];
+  const display=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];
   for(let i=0;i<display.length;i++)for(let j=i+1;j<display.length;j++){
    const key=[display[i],display[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
    pairs.set(key,(pairs.get(key)||0)+1);
@@ -254,11 +242,7 @@ async function rememberPlayerUniverse(rows){
  // Do not trigger another render here. renderBadges already has the exact rows
  // for this frame; a second asynchronous render during scroll caused valid badges
  // to be replaced by transient 0/45 values.
- if(changed){
-  // Identity metadata is cumulative display/context data only. It must never
-  // mutate ownership counts just because the user switched QB/RB/WR/TE/ALL.
-  await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
- }
+ if(changed)await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
@@ -314,10 +298,29 @@ async function captureOfficialExposure(){
 }
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
+
+ // Underdog Exposure is authoritative whenever we have an exact full-name
+ // capture. Accept the newest value even if its denominator is one draft behind
+ // the local tracker; the numerator is still the user's actual ownership count.
  const official=cached.officialExposure[full];
  if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
- // Stable portfolio map: independent of which Underdog position tab is visible.
- return st.map.get(full)||0;
+
+ // Fallback: count completed drafts directly. A player contributes at most once
+ // per draft. Historical short names are accepted only if unique on this slate.
+ const universe=Object.keys(cached.playerUniverse);
+ const rawMatchesFull=raw=>{
+  raw=norm(raw);if(!raw)return false;
+  if(raw===full)return true;
+  if(!aliasKeys(full).includes(raw))return false;
+  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(raw)))];
+  return matches.length===1&&matches[0]===full;
+ };
+ let count=0;
+ for(const d of cached.drafts){
+  if((cached.sport!=='ALL'&&(d.sport||'UNKNOWN')!==cached.sport)||(cached.selected!=='ALL'&&d.contest!==cached.selected))continue;
+  if((d.players||[]).some(p=>rawMatchesFull(p.name)))count++;
+ }
+ return count;
 }
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
