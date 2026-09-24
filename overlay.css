@@ -82,3 +82,5 @@
 .nuke-roster-intel>b.need{color:#f5df00!important}
 .nuke-roster-intel>b.complete{color:#38d996!important;text-shadow:0 0 5px rgba(56,217,150,.28)!important}
 .nuke-roster-intel>b.open{color:#9fb2c2!important}
+
+.nuke-next-tag.adp-fall{color:#55f0ad!important;border:1px solid rgba(85,240,173,.72)!important;background:rgba(56,217,150,.09)!important;box-shadow:0 0 6px rgba(56,217,150,.14)!important}
