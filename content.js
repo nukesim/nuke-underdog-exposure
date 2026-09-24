@@ -140,10 +140,23 @@ async function captureCompleted(){
  if(!location.pathname.includes('/completed/'))return;
  const rosters=rosterStrings(); if(!rosters.length)return;
  const contest=detectCompletedContest(); if(!contest)return; const sport=detectSport();
- const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];
+ const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
+ const current=stored?.drafts||[];
+ const universe=stored?.playerUniverse||cached.playerUniverse||{};
+ const official=stored?.officialExposure||cached.officialExposure||{};
+ const stableFullNames=new Map();
+ for(const [k,v] of Object.entries(universe))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
+ for(const v of Object.values(official))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
+ for(const d of current)for(const p of (d.players||[]))if(tokens(p.name).length>=2)stableFullNames.set(norm(p.name),clean(p.name));
+ const expandCompletedName=raw=>{
+  raw=clean(raw);const key=norm(raw);if(!key)return raw;
+  if(tokens(raw).length>=2)return raw;
+  const matches=[...stableFullNames.entries()].filter(([full])=>aliasKeys(full).includes(key));
+  return matches.length===1?matches[0][1]:raw;
+ };
  const byId=new Map(current.map(d=>[d.draftId,d]));
  for(const r of rosters){
-  const players=r.split(',').map(clean).filter(Boolean).map(name=>({name}));
+  const players=r.split(',').map(clean).filter(Boolean).map(name=>({name:expandCompletedName(name)}));
   if(players.length<2)continue;
   const draftId=[contest,...players.map(p=>norm(p.name)).sort()].join('|');
   byId.set(draftId,{draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
