@@ -308,12 +308,16 @@ function buildStyleStats(){
    pos=['QB','RB','WR','TE'].find(x=>raw.includes(x))||'';
   }
   if(pos)return pos;
-  const name=clean(p.name),full=norm(name);
-  if(cached.playerUniverse[full]?.pos)return cached.playerUniverse[full].pos;
-  const aliases=aliasKeys(name);
-  const matches=Object.values(cached.playerUniverse).filter(u=>u?.pos&&aliases.some(a=>aliasKeys(u.name).includes(a)));
+  const name=clean(p.name),rawName=norm(name);
+  if(cached.playerUniverse[rawName]?.pos)return cached.playerUniverse[rawName].pos;
+  // Historical completed cards often store ONLY a surname. Resolve that raw
+  // stored value against the slate universe. Do not compare every alias from
+  // both sides: that made full names collide through common surnames.
+  const matches=Object.entries(cached.playerUniverse)
+   .filter(([full,u])=>u?.pos&&(full===rawName||aliasKeys(full).includes(rawName)))
+   .map(([,u])=>u);
   const positions=[...new Set(matches.map(u=>u.pos).filter(Boolean))];
-  return positions.length===1?positions[0]:'';
+  return matches.length===1?matches[0].pos:(positions.length===1?positions[0]:'');
  };
  for(const d of ds){
   const counts={QB:0,RB:0,WR:0,TE:0};
