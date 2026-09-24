@@ -239,13 +239,14 @@ async function captureOfficialExposure(){
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
 
- // Current exact Underdog Exposure value wins when captured for this portfolio.
+ // Underdog Exposure is authoritative whenever we have an exact full-name
+ // capture. Accept the newest value even if its denominator is one draft behind
+ // the local tracker; the numerator is still the user's actual ownership count.
  const official=cached.officialExposure[full];
- if(official&&official.total===st.total)return official.count;
+ if(official&&official.count>=0&&Math.abs((official.total||0)-st.total)<=1)return official.count;
 
- // Otherwise count COMPLETED DRAFTS directly. A player can count at most once
- // per draft. This avoids broken aggregate buckets, double counting, and stale
- // canonicalization. Short names are accepted only when unique on the slate.
+ // Fallback: count completed drafts directly. A player contributes at most once
+ // per draft. Historical short names are accepted only if unique on this slate.
  const universe=Object.keys(cached.playerUniverse);
  const rawMatchesFull=raw=>{
   raw=norm(raw);if(!raw)return false;
