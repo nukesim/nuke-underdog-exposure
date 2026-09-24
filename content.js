@@ -44,10 +44,11 @@ function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
-  const names=[...new Set((d.players||[]).map(x=>canonicalHistoricalName(x.name)).filter(Boolean))];
+  const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
   for(const name of names)map.set(name,(map.get(name)||0)+1);
-  for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
-   const key=[names[i],names[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
+  const display=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];
+  for(let i=0;i<display.length;i++)for(let j=i+1;j<display.length;j++){
+   const key=[display[i],display[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
    pairs.set(key,(pairs.get(key)||0)+1);
   }
  }
@@ -243,30 +244,22 @@ async function captureOfficialExposure(){
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
 
- // The live badge must match Underdog's own Exposure page whenever we have an
- // exact full-name value for the CURRENT portfolio size. This is the ground
- // truth displayed by Underdog (e.g. Taylor 25.6% = 11/43).
+ // Exact current Underdog exposure is the ONLY acceptable source when present.
  const official=cached.officialExposure[full];
  if(official&&official.total===st.total)return official.count;
 
- // Fallback only when this exact player has not yet been captured from the
- // Exposure page. Use canonical completed-draft history; never mix/stack
- // official and local sources.
- if(st.map.has(full))return st.map.get(full);
-
- const universe=Object.keys(cached.playerUniverse);
- let resolved=null;
+ // Local history fallback: aggregate every stored representation that resolves
+ // uniquely to this player. computeStats canonicalizes most aliases, but old
+ // records can still be split between "chase brown" and "brown".
+ let total=0,found=false;
  for(const [stored,count] of st.map.entries()){
-  if(stored===full||stored.includes(' ')||!aliasKeys(full).includes(stored))continue;
+  if(stored===full){total+=count;found=true;continue}
+  if(!aliasKeys(full).includes(stored))continue;
+  const universe=Object.keys(cached.playerUniverse);
   const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(stored)))];
-  if(matches.length===1&&matches[0]===full){
-   // A player should have one canonical historical bucket after computeStats.
-   // If more than one survives, do not sum them and risk double counting.
-   if(resolved!==null)return official?.total===st.total?official.count:0;
-   resolved=count;
-  }
+  if(matches.length===1&&matches[0]===full){total+=count;found=true}
  }
- return resolved??0;
+ return found?Math.min(total,st.total):0;
 }
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
