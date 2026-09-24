@@ -174,7 +174,18 @@ function correlationTag(meta,drafted){
  if(teams.has(meta.team)&&!qbs.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'same-team',text:'SAME TEAM'};
  return null;
 }
-function exposureCount(name,st){for(const key of aliasKeys(name))if(st.map.has(key))return st.map.get(key);return 0}
+function exposureCount(name,st){
+ const full=norm(name);if(!full)return 0;
+ // Exact full-name match always wins.
+ if(st.map.has(full))return st.map.get(full);
+ // Completed cards sometimes store only a surname. A surname is safe only when
+ // it uniquely identifies ONE live player. Never let "Wilson" bleed into every Wilson.
+ const surname=aliasKeys(name).at(-1);
+ if(!surname||!st.map.has(surname))return 0;
+ const live=findPlayerRows().map(x=>norm(x.name)).filter(Boolean);
+ const matches=[...new Set(live.filter(n=>aliasKeys(n).includes(surname)))];
+ return matches.length===1?st.map.get(surname):0;
+}
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
  if(count>0&&rel>=.75)return 'nuke-exposure-green';
