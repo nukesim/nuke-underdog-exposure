@@ -222,6 +222,29 @@ function pairCount(a,b){
  }
  return 0;
 }
+function buildStyleStats(){
+ const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
+ const styles=[
+  {key:'1QB / 2RB / 2WR / 1TE',want:{QB:1,RB:2,WR:2,TE:1}},
+  {key:'1QB / 1RB / 3WR / 1TE',want:{QB:1,RB:1,WR:3,TE:1}},
+  {key:'1QB / 1RB / 2WR / 2TE',want:{QB:1,RB:1,WR:2,TE:2}}
+ ];
+ const out=styles.map(s=>({...s,count:0}));
+ for(const d of ds){
+  const counts={QB:0,RB:0,WR:0,TE:0};
+  for(const p of (d.players||[])){
+   let pos=String(p.pos||p.position||'').toUpperCase();
+   if(!pos){
+    // Completed-page fallback: infer position from any structured metadata we captured.
+    const raw=String(p.slot||p.rosterPosition||p.position_name||'').toUpperCase();
+    pos=['QB','RB','WR','TE'].find(x=>raw.includes(x))||'';
+   }
+   if(counts[pos]!==undefined)counts[pos]++;
+  }
+  for(const s of out)if(Object.keys(s.want).every(k=>counts[k]===s.want[k]))s.count++;
+ }
+ return {total:ds.length,styles:out};
+}
 function duplicateState(drafted){
  const hist=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  if(!drafted.length||!hist.length)return {best:0,total:drafted.length,exact:false,matches:[],draft:null};
@@ -334,13 +357,14 @@ function renderComboPanel(){
   panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · TOP COMBOS</b><span>'+total+' drafts</span></div>'+top.map(([k,n])=>'<div class="nuke-combo-row"><span>'+k+'</span><b>'+n+'/'+total+' · '+(total?Math.round(n/total*100):0)+'%</b></div>').join('');
   return;
  }
- const state=rosterState(drafted),dupe=duplicateState(drafted);
+ const state=rosterState(drafted),dupe=duplicateState(drafted),builds=buildStyleStats();
  const candidates=availableCandidates().sort((a,b)=>b.fit-a.fit||b.covered-a.covered||b.sum-a.sum||b.best-a.best||a.exposure-b.exposure||a.name.localeCompare(b.name)).slice(0,10);
  const picked=drafted.map(x=>x.name).join(' + ');
  const build='QB '+state.counts.QB+' · RB '+state.counts.RB+' · WR '+state.counts.WR+' · TE '+state.counts.TE;
  panel.innerHTML='<div class="nuke-combo-head"><b>NUKE · NEXT</b><span>'+total+' drafts</span></div>'+
   '<div class="nuke-roster-intel"><span>'+build+'</span><b class="'+state.stackClass+'">'+state.stackText+'</b></div>'+
   '<div class="nuke-duplicate '+(dupe.exact?'danger':dupe.best>=4?'warn':'safe')+'"><b>'+(dupe.exact?'⚠ FULL LINEUP DUPLICATE':dupe.best>=4?'DUPLICATE WATCH · '+dupe.best+'/'+drafted.length:'UNIQUE BUILD · closest '+dupe.best+'/'+drafted.length)+'</b><span>'+(dupe.matches.length?dupe.matches.join(' + '):'No matching prior core')+'</span></div>'+
+  '<div class="nuke-build-mix">'+builds.styles.map(s=>'<span><b>'+s.key+'</b><em>'+s.count+'/'+builds.total+' · '+(builds.total?Math.round(s.count/builds.total*100):0)+'%</em></span>').join('')+'</div>'+
   '<div class="nuke-next-picks">MY PICKS · '+picked+'</div>'+
   candidates.map(x=>{
    const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
