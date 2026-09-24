@@ -242,23 +242,28 @@ async function captureOfficialExposure(){
 }
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
- // Underdog's exposure page is authoritative for full-name matches. Do not
- // require its denominator to equal our locally captured tournament count:
- // the exposure page can update to 41 drafts before the local scraper does.
- const official=cached.officialExposure[full];
- if(official)return official.count;
+
+ // Prefer the locally completed-draft history because it updates after every
+ // completed draft and is what the popup/combo counts are built from.
  if(st.map.has(full))return st.map.get(full);
 
- // Resolve an old shortened stored name only if it uniquely identifies THIS
- // full player across the persistent slate. This recovers "Washington" ->
- // Parker Washington while still refusing ambiguous "Wilson".
+ // Old completed cards stored shortened names. Resolve a stored alias only
+ // when it identifies exactly one player in the full saved slate. Importantly,
+ // sum ALL safe aliases for this player instead of returning the first one.
  const universe=Object.keys(cached.playerUniverse);
+ let historical=0,matched=false;
  for(const [stored,count] of st.map.entries()){
-  if(stored===full||stored.includes(' '))continue;
+  if(stored===full)continue;
   if(!aliasKeys(full).includes(stored))continue;
   const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(stored)))];
-  if(matches.length===1&&matches[0]===full)return count;
+  if(matches.length===1&&matches[0]===full){historical+=count;matched=true}
  }
+ if(matched)return historical;
+
+ // Official Underdog exposure is a last-resort exact-full-name fallback only.
+ // Never let stale official-page data override the completed-draft history.
+ const official=cached.officialExposure[full];
+ if(official&&official.total===st.total)return official.count;
  return 0;
 }
 function exposureTier(count,total,maxCount){
