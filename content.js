@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 const clean=s=>(s||'').replace(/\s+/g,' ').trim();
-let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null};
+let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null,officialExposure:{},playerUniverse:{}};
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
@@ -39,8 +39,8 @@ function computeStats(){
  cached.stats={total:ds.length,map,pairs};
 }
 async function hydrate(){
- const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL'})); if(!x)return;
- cached.drafts=x.drafts||[]; cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL'; cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL'; computeStats(); scheduleRender(0);
+ const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL',officialExposure:{},playerUniverse:{}})); if(!x)return;
+ cached.drafts=x.drafts||[]; cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL'; cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL'; cached.officialExposure=x.officialExposure||{}; cached.playerUniverse=x.playerUniverse||{}; computeStats(); scheduleRender(0);
 }
 function rosterStrings(){
  const out=[];
@@ -174,21 +174,55 @@ function correlationTag(meta,drafted){
  if(teams.has(meta.team)&&!qbs.has(meta.team)&&['WR','TE','RB'].includes(meta.pos))return {kind:'same-team',text:'SAME TEAM'};
  return null;
 }
+async function rememberPlayerUniverse(rows){
+ let changed=false;
+ for(const {name,row} of rows){
+  const meta=nflRowMeta(row),key=norm(name);if(!key)continue;
+  const next={name:clean(name),pos:meta.pos||'',team:meta.team||''};
+  if(JSON.stringify(cached.playerUniverse[key])!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
+ }
+ if(changed)await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}));
+}
+async function captureOfficialExposure(){
+ if(!location.pathname.includes('/exposure/'))return;
+ const totalMatch=(document.body.innerText||'').match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
+ const total=Number(totalMatch?.[1]||0);if(!total)return;
+ const next={...cached.officialExposure};let changed=false;
+ for(const el of document.querySelectorAll('span,div,p')){
+  if(el.childElementCount||el.offsetParent===null)continue;
+  const name=clean(el.textContent);
+  if(name.length<4||name.length>45||!/^[A-Za-zÀ-ÿ.' -]+$/.test(name))continue;
+  let row=el;
+  for(let i=0;i<5&&row;i++,row=row.parentElement){
+   const t=clean(row.innerText);
+   const m=t.match(/(\d+(?:\.\d+)?)%\s*(?:Drafted)?/i);
+   if(!m)continue;
+   const pct=Number(m[1]);if(!Number.isFinite(pct))break;
+   const count=Math.round(total*pct/100),key=norm(name);
+   if(!key)break;
+   const val={count,total,pct,capturedAt:Date.now()};
+   if(JSON.stringify(next[key])!==JSON.stringify(val)){next[key]=val;changed=true}
+   break;
+  }
+ }
+ if(changed){cached.officialExposure=next;await safe(()=>chrome.storage.local.set({officialExposure:next}));scheduleRender(0)}
+}
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
+ const official=cached.officialExposure[full];
+ if(official&&official.total===st.total)return official.count;
  if(st.map.has(full))return st.map.get(full);
  const aliases=aliasKeys(name);
- // Prefer a qualified multi-token alias before ever falling back to surname.
- // This preserves suffix identities such as "Walker III" even when another
- // Walker is in the slate, while still preventing "Wilson" from bleeding.
  for(const key of aliases){
   if(key===full||!key.includes(' ')||!st.map.has(key))continue;
   return st.map.get(key);
  }
  const surname=aliases.at(-1);
  if(!surname||!st.map.has(surname))return 0;
- const live=findPlayerRows().map(x=>norm(x.name)).filter(Boolean);
- const matches=[...new Set(live.filter(n=>aliasKeys(n).includes(surname)))];
+ // Never decide surname uniqueness from the CURRENT filtered/search view.
+ // Use the persistent slate universe we've observed across the draft instead.
+ const universe=Object.keys(cached.playerUniverse);
+ const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(surname)))];
  return matches.length===1?st.map.get(surname):0;
 }
 function exposureTier(count,total,maxCount){
@@ -206,7 +240,7 @@ function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
  const st=cached.stats;if(!st)return;
  document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team')); document.querySelectorAll('[data-nuke-stack]').forEach(el=>{el.classList.remove('nuke-stack-row');delete el.dataset.nukeStack});
- const rows=findPlayerRows();
+ const rows=findPlayerRows(); rememberPlayerUniverse(rows);
  const drafted=cached.sport==='NFL'?draftedNFL():[];
  const counts=rows.map(({name})=>exposureCount(name,st));
  const maxCount=Math.max(0,...counts);
@@ -394,12 +428,14 @@ function renderComboPanel(){
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
-const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else scheduleRender()});
+const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
  if(changes.drafts)cached.drafts=changes.drafts.newValue||[];
+ if(changes.officialExposure)cached.officialExposure=changes.officialExposure.newValue||{};
+ if(changes.playerUniverse)cached.playerUniverse=changes.playerUniverse.newValue||{};
  if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';
  if(changes.exposureScope)cached.sport=changes.exposureScope.newValue?.sport||'ALL';cached.selected=changes.exposureScope.newValue?.contest||'ALL';
  if(changes.lastSelectedContest&&!changes.exposureScope)cached.selected=changes.lastSelectedContest.newValue||'ALL';
@@ -408,5 +444,5 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
  if(msg?.type==='NUKE_FORCE_SCAN'){(async()=>{await captureCompleted();await hydrate();send({ok:true,total:cached.drafts.length})})();return true}
 });
-(async()=>{await hydrate();await captureCompleted();scheduleRender(0)})();
+(async()=>{await hydrate();await captureCompleted();await captureOfficialExposure();scheduleRender(0)})();
 })();
