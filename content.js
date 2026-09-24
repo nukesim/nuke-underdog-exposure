@@ -255,17 +255,36 @@ function adpValue(meta,drafted,state){
  const bonus=Math.min(38,Math.round(fall*7));
  return {bonus,fall,label:'ADP FALL +'+fall.toFixed(fall%1?1:0)};
 }
+function raritySignal(allRels,drafted,total){
+ if(!drafted.length||!total)return {bonus:0,label:'',max:0};
+ const counts=allRels.map(x=>x.count),max=Math.max(...counts,0);
+ // Reward paths that have barely/never appeared in our completed drafts.
+ // Strongest in the early/middle portion where unusual ADP slides create genuinely
+ // hard-to-reproduce constructions; correlation still scores separately.
+ const early=drafted.length<=4;
+ if(max===0)return {bonus:early?18:10,label:'RARE PAIR · NEW',max};
+ if(max===1)return {bonus:early?13:7,label:'RARE PAIR · 1/'+total,max};
+ if(max===2&&total>=15)return {bonus:early?7:3,label:'UNCOMMON · 2/'+total,max};
+ return {bonus:0,label:'',max};
+}
+function exposureBalance(exposure,total){
+ if(!total)return {bonus:0,label:''};
+ const rate=exposure/total;
+ if(rate<=.08)return {bonus:5,label:'LOW EXP'};
+ if(rate>=.35)return {bonus:-5,label:'HIGH EXP'};
+ return {bonus:0,label:''};
+}
 function candidateSignals(name,meta,drafted,total,state){
  const allRels=drafted.map(p=>({pick:p.name,count:pairCount(name,p.name)})).sort((a,b)=>b.count-a.count);
  const rels=allRels.filter(x=>x.count>0),exposure=exposureCount(name,cached.stats),tag=correlationTag(meta,drafted);
  const covered=rels.length,sum=rels.reduce((s,x)=>s+x.count,0),best=rels[0]?.count||0,pickCount=Math.max(1,drafted.length);
  const avgPairRate=total?sum/(total*pickCount):0,coverageRate=covered/pickCount;
- // Correlation and actual roster need now lead the score; historical pairing remains useful
- // but cannot bury an obvious QB-stack requirement.
  const corrBonus=tag?.kind==='qb-stack'?34:tag?.kind==='bringback'?12:tag?.kind==='same-team'?3:0;
- const needBonus=positionNeed(meta,state),value=adpValue(meta,drafted,state);
- const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*42+coverageRate*18+corrBonus+needBonus+value.bonus)));
- return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus,value};
+ const needBonus=positionNeed(meta,state),value=adpValue(meta,drafted,state),rarity=raritySignal(allRels,drafted,total),balance=exposureBalance(exposure,total);
+ // ADP value + correlation + roster need lead. Rarity is a meaningful tiebreaker:
+ // we want access to combinations the room normally never lets us build.
+ const fit=Math.min(100,Math.max(0,Math.round(avgPairRate*34+coverageRate*15+corrBonus+needBonus+value.bonus+rarity.bonus+balance.bonus)));
+ return {name,meta,rels,allRels,exposure,total,tag,covered,sum,best,fit,needBonus,value,rarity,balance};
 }
 function availableCandidates(){
  const drafted=draftedNFL(),state=rosterState(drafted),hasQB=!!state.qb;
@@ -296,8 +315,10 @@ function renderComboPanel(){
   candidates.map(x=>{
    const pct=total?Math.round(x.exposure/total*100):0,rel=x.rels.slice(0,2).map(r=>r.pick+' '+r.count+'/'+total).join(' · ');
    const corr=x.tag?'<em class="nuke-next-tag '+x.tag.kind+'">'+x.tag.text+'</em>':'';
-   const value=x.value?.bonus?'<em class="nuke-next-tag adp-fall">'+x.value.label+'</em>':'',relationship=rel||'No prior combo with my picks';
-   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+value+'<span>'+relationship+'</span></div>'+
+   const value=x.value?.bonus?'<em class="nuke-next-tag adp-fall">'+x.value.label+'</em>':'';
+   const rare=x.rarity?.bonus?'<em class="nuke-next-tag rare">'+x.rarity.label+'</em>':'';
+   const bal=x.balance?.label?'<em class="nuke-next-tag exposure">'+x.balance.label+'</em>':'',relationship=rel||'No prior combo with my picks';
+   return '<div class="nuke-next-row"><div class="nuke-next-main"><b>'+x.name+'</b>'+corr+value+rare+bal+'<span>'+relationship+'</span></div>'+
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
