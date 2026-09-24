@@ -71,21 +71,28 @@ async function ingestStructured(data,kind='',url=''){
 window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
+ // Exact identity always wins.
+ if(cached.officialExposure[raw]?.name)return norm(cached.officialExposure[raw].name);
  if(cached.playerUniverse[raw])return raw;
- const universe=Object.keys(cached.playerUniverse);
- // Old completed cards often stored only "Gibbs", "McCaffrey", etc.
- // Upgrade those to a full name only when that alias identifies exactly one
- // player in the entire saved slate. Ambiguous names such as Wilson stay raw.
- const matches=[...new Set(universe.filter(full=>aliasKeys(full).includes(raw)))];
+
+ // Resolve legacy short completed-card names against a STABLE identity set:
+ // official Exposure names + every player ever learned, not just the current tab.
+ const identity=new Map();
+ for(const [k,v] of Object.entries(cached.playerUniverse))identity.set(k,v?.name||k);
+ for(const [k,v] of Object.entries(cached.officialExposure))if(v?.name)identity.set(norm(v.name),v.name);
+ const matches=[...identity.keys()].filter(full=>aliasKeys(full).includes(raw));
  return matches.length===1?matches[0]:raw;
 }
 function computeStats(){
  const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
-  const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
+  const names=[...new Set((d.players||[]).map(x=>canonicalHistoricalName(x.name)).filter(Boolean))];
   for(const name of names)map.set(name,(map.get(name)||0)+1);
-  const display=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];
+  const display=[...new Set((d.players||[]).map(x=>{
+   const k=canonicalHistoricalName(x.name);
+   return cached.officialExposure[k]?.name||cached.playerUniverse[k]?.name||clean(x.name);
+  }).filter(Boolean))];
   for(let i=0;i<display.length;i++)for(let j=i+1;j<display.length;j++){
    const key=[display[i],display[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
    pairs.set(key,(pairs.get(key)||0)+1);
@@ -242,7 +249,10 @@ async function rememberPlayerUniverse(rows){
  // Do not trigger another render here. renderBadges already has the exact rows
  // for this frame; a second asynchronous render during scroll caused valid badges
  // to be replaced by transient 0/45 values.
- if(changed)await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
+ if(changed){
+  computeStats();
+  await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
+ }
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
@@ -298,22 +308,10 @@ async function captureOfficialExposure(){
 }
 function exposureCount(name,st){
  const full=norm(name);if(!full)return 0;
-
- // Exact official Underdog exposure is the only authoritative override.
  const official=cached.officialExposure[full];
  if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
-
- // Historical fallback must use canonical identity, not raw surnames. This keeps
- // popup/live ownership identical when old completed cards stored "Williams",
- // "Brown", etc. A short alias is accepted only when it resolves to exactly one
- // player in the saved slate universe.
- let count=0;
- for(const d of cached.drafts){
-  if((cached.sport!=='ALL'&&(d.sport||'UNKNOWN')!==cached.sport)||(cached.selected!=='ALL'&&d.contest!==cached.selected))continue;
-  const ids=new Set((d.players||[]).map(p=>canonicalHistoricalName(p.name)).filter(Boolean));
-  if(ids.has(full))count++;
- }
- return count;
+ // Stable portfolio map: independent of which Underdog position tab is visible.
+ return st.map.get(full)||0;
 }
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
