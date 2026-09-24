@@ -71,16 +71,15 @@ async function ingestStructured(data,kind='',url=''){
 window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
- // Exact identity always wins.
+ // Official Exposure full-name records are stable portfolio identity.
  if(cached.officialExposure[raw]?.name)return norm(cached.officialExposure[raw].name);
- if(cached.playerUniverse[raw])return raw;
 
- // Resolve legacy short completed-card names against a STABLE identity set:
- // official Exposure names + every player ever learned, not just the current tab.
- const identity=new Map();
- for(const [k,v] of Object.entries(cached.playerUniverse))identity.set(k,v?.name||k);
- for(const [k,v] of Object.entries(cached.officialExposure))if(v?.name)identity.set(norm(v.name),v.name);
- const matches=[...identity.keys()].filter(full=>aliasKeys(full).includes(raw));
+ // Legacy completed cards may contain only a surname. Resolve it ONLY against
+ // official full-name exposure records. Never use the currently visited player
+ // tabs as an identity source, because that would make ownership tab-dependent.
+ const officialNames=[...new Set(Object.values(cached.officialExposure)
+  .map(v=>v?.name).filter(Boolean).map(norm))];
+ const matches=officialNames.filter(full=>aliasKeys(full).includes(raw));
  return matches.length===1?matches[0]:raw;
 }
 function computeStats(){
@@ -250,7 +249,8 @@ async function rememberPlayerUniverse(rows){
  // for this frame; a second asynchronous render during scroll caused valid badges
  // to be replaced by transient 0/45 values.
  if(changed){
-  computeStats();
+  // Identity metadata is cumulative display/context data only. It must never
+  // mutate ownership counts just because the user switched QB/RB/WR/TE/ALL.
   await safe(()=>chrome.storage.local.set({playerUniverse:cached.playerUniverse}))
  }
 }
