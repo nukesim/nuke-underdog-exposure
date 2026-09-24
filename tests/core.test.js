@@ -11,3 +11,5 @@ test('two different full Browns never collide',()=>assert.equal(strength('Chase 
 test('two different Wilson full names never collide',()=>assert.equal(strength('Garrett Wilson','Michael Wilson'),0));
 test('legacy and full-name versions of same roster match',()=>assert.equal(rosterMatch([{name:'Gibbs'},{name:'Jefferson'}],[{name:'Jahmyr Gibbs'},{name:'Justin Jefferson'}]),true));
 test('different full-name Brown rosters do not match',()=>assert.equal(rosterMatch([{name:'Chase Brown'},{name:'Justin Jefferson'}],[{name:'Amon-Ra St. Brown'},{name:'Justin Jefferson'}]),false));
+
+test('compound surname expands only toward longer exact suffix',()=>{assert.ok(strength('St. Brown','Amon-Ra St. Brown')>0);assert.equal(strength('Chase Brown','Amon-Ra St. Brown'),0)});

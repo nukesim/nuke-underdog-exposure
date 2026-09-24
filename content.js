@@ -1,6 +1,6 @@
 (() => {
 'use strict';
-const clean=s=>(s||'').replace(/\s+/g,' ').trim();
+const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
 let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null,officialExposure:{},playerUniverse:{},entryTotals:{}};
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
@@ -75,20 +75,26 @@ function repairStoredDrafts(drafts,entryTotals=cached.entryTotals){
    if(!best)break;
    arr.splice(best.remove,1);
   }
+  while(target>0&&arr.length>target){
+   const synthetic=arr.map((d,i)=>({d,i,q:draftQuality(d)})).filter(x=>isSyntheticDraft(x.d)).sort((a,b)=>a.q-b.q||String(a.d.capturedAt||'').localeCompare(String(b.d.capturedAt||'')));
+   if(!synthetic.length)break;
+   arr.splice(synthetic[0].i,1);
+  }
   repaired.push(...arr);
  }
  return repaired;
 }
 function knownFullNames(drafts=cached.drafts,official=cached.officialExposure,universe=null){
  const out=new Map(),add=n=>{n=clean(n);if(tokens(n).length>=2)out.set(norm(n),n)};
- for(const d of drafts||[])for(const p of (d.players||[]))add(p?.name);
+ for(const d of drafts||[]){const trusted=!isSyntheticDraft(d);for(const p of (d.players||[]))if(trusted||p?.id)add(p?.name)}
  for(const o of Object.values(official||{}))add(o?.name);
  for(const u of Object.values(universe||{}))add(u?.name);
  return [...out.values()];
 }
 function canonicalDisplayName(raw,drafts=cached.drafts,official=cached.officialExposure,universe=null){
- raw=clean(raw);if(!raw||tokens(raw).length>=2)return raw;
- const matches=knownFullNames(drafts,official,universe).filter(full=>nameMatchStrength(raw,full)>0);
+ raw=clean(raw);if(!raw)return raw;
+ const pool=knownFullNames(drafts,official,universe),exact=pool.find(full=>norm(full)===norm(raw));if(exact)return exact;
+ const matches=pool.filter(full=>tokens(full).length>tokens(raw).length&&nameMatchStrength(raw,full)>0);
  return matches.length===1?matches[0]:raw;
 }
 function enrichDraftNames(drafts,official=cached.officialExposure){
@@ -109,8 +115,8 @@ function enrichDraftNames(drafts,official=cached.officialExposure){
  });
  const pool=knownFullNames(out,official,null);
  return out.map(d=>({...d,players:(d.players||[]).map(p=>{
-  if(tokens(p.name).length>=2)return p;
-  const matches=pool.filter(full=>nameMatchStrength(p.name,full)>0);
+  const exact=pool.find(full=>norm(full)===norm(p.name));if(exact)return {...p,name:exact};
+  const matches=pool.filter(full=>tokens(full).length>tokens(p.name).length&&nameMatchStrength(p.name,full)>0);
   return matches.length===1?{...p,name:matches[0]}:p;
  })}));
 }
@@ -163,10 +169,13 @@ function harvestOfficialExposureStructured(root){
  walk(root);return out;
 }
 async function ingestStructured(data,kind='',url=''){
- const found=(location.pathname.includes('/completed/')||/completed/i.test(String(url||'')))?harvestStructured(data):[];
+ const onCompleted=location.pathname.includes('/completed/')||/completed/i.test(String(url||''));
+ const pageContest=onCompleted?detectCompletedContest():'';const sizes=onCompleted?new Set(rosterStrings().map(r=>r.split(',').map(clean).filter(Boolean).length)):new Set();
+ const found=onCompleted?harvestStructured(data).filter(d=>(!pageContest||contestNorm(d.contest)===contestNorm(pageContest))&&(!sizes.size||sizes.has((d.players||[]).length))):[];
  if(found.length){
   const current=(await safe(()=>chrome.storage.local.get({drafts:[],entryTotals:{},officialExposure:{}})))||{};const byId=new Map((current.drafts||[]).map(d=>[d.draftId,d]));
-  for(const raw of found){const d={...raw,source:'structured-api'};if((!d.sport||d.sport==='UNKNOWN')&&cached.sport!=='ALL')d.sport=cached.sport;byId.set(d.draftId,d)}
+  const pageSport=detectSport(),knownSport=/^(NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|SOCCER)$/;
+  for(const raw of found){const d={...raw,source:'structured-api'};if(!knownSport.test(String(d.sport||'').toUpperCase())&&pageSport!=='UNKNOWN')d.sport=pageSport;else if((!d.sport||d.sport==='UNKNOWN')&&cached.sport!=='ALL')d.sport=cached.sport;byId.set(d.draftId,d)}
   const totals=current.entryTotals||cached.entryTotals||{};const official=current.officialExposure||cached.officialExposure||{};
   const drafts=enrichDraftNames(repairStoredDrafts([...byId.values()],totals),official);await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();
  }
@@ -278,9 +287,11 @@ async function captureCompleted(){
  const stored=await safe(()=>chrome.storage.local.get({drafts:[],officialExposure:{},entryTotals:{}}));if(!stored)return;
  const official=stored.officialExposure||cached.officialExposure||{},entryTotals={...(stored.entryTotals||cached.entryTotals||{})};
  if(total>0){entryTotals[entryTotalKey(sport,contest)]=total;entryTotals[wildcardEntryTotalKey(contest)]=total}
- let drafts=enrichDraftNames(repairStoredDrafts(stored.drafts||[],entryTotals),official);
+ const knownSport=/^(NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|SOCCER)$/;
+ const normalizedStored=(stored.drafts||[]).map(d=>contestNorm(d.contest||'')===contestNorm(contest)&&sport!=='UNKNOWN'&&!knownSport.test(String(d.sport||'').toUpperCase())?{...d,sport}:d);
+ let drafts=enrichDraftNames(repairStoredDrafts(normalizedStored,entryTotals),official);
  const pool=knownFullNames(drafts,official,null);
- const expand=raw=>{raw=clean(raw);if(tokens(raw).length>=2)return raw;const m=pool.filter(full=>nameMatchStrength(raw,full)>0);return m.length===1?m[0]:raw};
+ const expand=raw=>{raw=clean(raw);const exact=pool.find(full=>norm(full)===norm(raw));if(exact)return exact;const m=pool.filter(full=>tokens(full).length>tokens(raw).length&&nameMatchStrength(raw,full)>0);return m.length===1?m[0]:raw};
  for(const raw of rosters){
   const players=raw.split(',').map(clean).filter(Boolean).map(name=>({name:expand(name)}));if(players.length<2)continue;
   const matches=drafts.map((d,i)=>({d,i,m:rosterMatch(players,d.players)})).filter(x=>dScopeSame(x.d,sport,contest)&&x.m.ok);
@@ -489,16 +500,16 @@ function badge(count,total,maxCount){
 }
 function renderBadges(){
  if(!location.pathname.includes('/draft/'))return;
- const st=cached.stats;if(!st)return;
+ const st=cached.stats;if(!st)return;const authoritativeTotal=targetForScope(cached.sport,cached.selected)||st.total;const exposureState={...st,total:authoritativeTotal};
  document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team')); document.querySelectorAll('[data-nuke-stack]').forEach(el=>{el.classList.remove('nuke-stack-row');delete el.dataset.nukeStack});
  const rows=findPlayerRows(); rememberPlayerUniverse(rows);
  const drafted=cached.sport==='NFL'?draftedNFL():[];
- const counts=rows.map(({name})=>exposureCount(name,st));
+ const counts=rows.map(({name})=>exposureCount(name,exposureState));
  const maxCount=Math.max(0,...counts);
  for(let i=0;i<rows.length;i++){
   const {name,el,row}=rows[i];
   const count=counts[i];
-  const b=badge(count,st.total,maxCount);
+  const b=badge(count,authoritativeTotal,maxCount);
   b.style.marginLeft='5px';
   b.style.position='static';
   b.style.width='auto';

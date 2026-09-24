@@ -1,1 +1,1 @@
-{"name":"nuke-underdog-exposure","private":true,"version":"0.8.1","scripts":{"test":"node --test tests/core.test.js"}}
+{"name":"nuke-underdog-exposure","private":true,"version":"0.8.2","scripts":{"test":"node --test tests/core.test.js"}}
