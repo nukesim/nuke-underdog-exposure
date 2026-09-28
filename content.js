@@ -47,22 +47,10 @@ function harvestOfficialExposureStructured(root){
  walk(root);return out;
 }
 async function ingestStructured(data,kind='',url=''){
- let found=harvestStructured(data);
- const pageSport=detectSport(),pageContest=location.pathname.includes('/completed/')?detectCompletedContest():'';
- if(pageSport==='NBA'&&found.length){
-  const sameContest=(a,b)=>{const x=norm(contestNorm(a||'')),y=norm(contestNorm(b||''));return !!x&&!!y&&(x===y||x.startsWith(y)||y.startsWith(x))};
-  const scoped=pageContest?found.filter(d=>sameContest(d.contest,pageContest)):[];
-  if(scoped.length)found=scoped;
-  found=found.map(d=>({...d,sport:'NBA',contest:pageContest||d.contest,source:d.source||'structured-api'}));
- }
+ const found=harvestStructured(data);
  if(found.length){
   const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
-  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];
-  const write={drafts};
-  if(pageSport==='NBA'&&pageContest)write.exposureScope={sport:'NBA',contest:pageContest};
-  await safe(()=>chrome.storage.local.set(write));cached.drafts=drafts;
-  if(pageSport==='NBA'){cached.sport='NBA';if(pageContest)cached.selected=pageContest}
-  computeStats();
+  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();
  }
  if(/exposure/i.test(String(url||''))){
   const hits=harvestOfficialExposureStructured(data);
@@ -122,14 +110,7 @@ async function hydrate(){
  const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL',officialExposure:{},playerUniverse:{}}));if(!x)return;
  const repaired=dedupeStoredDrafts(x.drafts||[]);
  if(repaired.length!==(x.drafts||[]).length)await safe(()=>chrome.storage.local.set({drafts:repaired}));
- cached.drafts=repaired;cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL';cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL';cached.officialExposure=x.officialExposure||{};cached.playerUniverse=x.playerUniverse||{};
- const pageSport=detectSport();
- if(pageSport==='NBA'){
-  cached.sport='NBA';
-  const contests=[...new Set(cached.drafts.filter(d=>(d.sport||'UNKNOWN')==='NBA').map(d=>d.contest).filter(Boolean))];
-  if(!contests.includes(cached.selected))cached.selected=contests.length===1?contests[0]:'ALL';
- }
- computeStats();scheduleRender(0);
+ cached.drafts=repaired;cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL';cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL';cached.officialExposure=x.officialExposure||{};cached.playerUniverse=x.playerUniverse||{};computeStats();scheduleRender(0);
 }
 function rosterStrings(){
  const out=[];
@@ -163,18 +144,6 @@ function detectCompletedContest(){
    if(candidates.length)return contestNorm(candidates[0]);
   }
  }
- // NBA completed pages can show collapsed team rows without the NFL-style
- // "Projected" roster text. Fall back to the tournament list in that case.
- const lines=(document.body.innerText||'').split('\n').map(clean).filter(Boolean);
- const ti=lines.findIndex(x=>/^Tournaments$/i.test(x));
- if(ti>=0){
-  for(let i=ti+1;i<Math.min(lines.length,ti+10);i++){
-   const x=lines[i];
-   if(x.length<3||x.length>80||/^\$/.test(x)||/^\d+$/.test(x))continue;
-   if(/^(Entries?|Entry|Exposure|Email exposure CSV|Your teams?|Round|Won|Prizes?)$/i.test(x))continue;
-   return contestNorm(x);
-  }
- }
  return '';
 }
 function detectSport(){
@@ -184,12 +153,8 @@ function detectSport(){
 }
 async function captureCompleted(){
  if(!location.pathname.includes('/completed/'))return;
+ const rosters=rosterStrings(); if(!rosters.length)return;
  const contest=detectCompletedContest(); if(!contest)return; const sport=detectSport();
- if(sport==='NBA'){
-  cached.sport='NBA';cached.selected=contest;
-  await safe(()=>chrome.storage.local.set({exposureScope:{sport:'NBA',contest}}));
- }
- const rosters=rosterStrings(); if(!rosters.length){computeStats();scheduleRender(0);return}
  const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
  const current=stored?.drafts||[],universe=stored?.playerUniverse||cached.playerUniverse||{},official=stored?.officialExposure||cached.officialExposure||{};
  const stableFullNames=new Map();
@@ -247,14 +212,6 @@ function nflRowMeta(row){
  const adp=nums.length>=2?nums[nums.length-2]:null;
  return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||'',adp};
 }
-function nbaRowMeta(row){
- const t=clean(row.innerText);
- const pos=t.match(/\b(PG|SG|SF|PF|C|G|F)\d*\b/i)?.[1]?.toUpperCase()||'';
- const game=t.match(/\b([A-Z]{2,3})\s+(?:vs|@)\s+([A-Z]{2,3})\b/i);
- const nums=[...t.matchAll(/\b(\d+(?:\.\d+)?)\b/g)].map(m=>Number(m[1])).filter(Number.isFinite);
- const adp=nums.length>=2?nums[nums.length-2]:null;
- return {pos,team:game?.[1]?.toUpperCase()||'',opp:game?.[2]?.toUpperCase()||'',adp};
-}
 function draftedNFL(){
  const root=playerPoolRoot(),out=[],seen=new Set();
  // Find the FULL roster panel, not a nested QB/RB/WR/TE subsection. Nested
@@ -305,12 +262,11 @@ function correlationTag(meta,drafted){
 async function rememberPlayerUniverse(rows){
  let changed=false;
  for(const {name,row} of rows){
-  const meta=cached.sport==='NBA'?nbaRowMeta(row):nflRowMeta(row),key=norm(name);if(!key)continue;
+  const meta=nflRowMeta(row),key=norm(name);if(!key)continue;
   const prev=cached.playerUniverse[key]||{};
   // Monotonic enrichment: scrolling/virtualized rows may briefly omit metadata.
   // Never replace known identity fields with blanks from a recycled DOM node.
   const next={name:clean(name)||prev.name||'',pos:meta.pos||prev.pos||'',team:meta.team||prev.team||''};
-  if(cached.sport==='NBA')next.sport='NBA';
   if(JSON.stringify(prev)!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
  }
  // Do not trigger another render here. renderBadges already has the exact rows
@@ -321,7 +277,7 @@ async function rememberPlayerUniverse(rows){
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
  const bodyText=document.body.innerText||'';
- const totalMatch=bodyText.match(/(?:Showing:\s*All\s*)?(\d+)\s*(?:drafts?|entries)/i);
+ const totalMatch=bodyText.match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
  const total=Number(totalMatch?.[1]||0);if(!total)return;
  const next={...cached.officialExposure};let changed=false;
 
@@ -336,7 +292,7 @@ async function captureOfficialExposure(){
    lines.some(x=>/^Drafted$/i.test(x))&&
    lines.some(x=>/^Entry fees$/i.test(x))&&
    lines.some(x=>/^\d+(?:\.\d+)?%$/.test(x))&&
-   lines.some(x=>/^(QB|RB|WR|TE|PG|SG|SF|PF|C|G|F)\d*$/i.test(x));
+   lines.some(x=>/^(QB|RB|WR|TE)\d*$/i.test(x));
  });
  const rows=candidates.filter(row=>![...row.children].some(ch=>{
   if(ch.offsetParent===null)return false;
@@ -347,7 +303,7 @@ async function captureOfficialExposure(){
   const lines=(row.innerText||'').split('\n').map(clean).filter(Boolean);
   const pctToken=lines.find(x=>/^\d+(?:\.\d+)?%$/.test(x));
   const hit=Number(pctToken?.replace('%',''));if(!Number.isFinite(hit))continue;
-  const posIndex=lines.findIndex(x=>/^(QB|RB|WR|TE|PG|SG|SF|PF|C|G|F)\d*$/i.test(x));
+  const posIndex=lines.findIndex(x=>/^(QB|RB|WR|TE)\d*$/i.test(x));
   let name='';
   if(posIndex>0){
    for(let i=posIndex-1;i>=0;i--){
@@ -357,15 +313,12 @@ async function captureOfficialExposure(){
    }
   }
   if(!name)continue;
-  const exposureSport=detectSport()==='NBA'?'NBA':cached.sport;
-  const key=exposureSport==='NBA'?'nba::'+norm(name):norm(name);
+  const key=norm(name);
   // Require a real full name for authoritative identity. A bare surname can
   // never overwrite an exact player's record.
   if(tokens(name).length<2)continue;
   const count=Math.round(total*hit/100);
-  const val=exposureSport==='NBA'
-   ?{name:clean(name),count,total,pct:hit,sport:'NBA',capturedAt:Date.now(),source:'underdog-exposure'}
-   :{name:clean(name),count,total,pct:hit,capturedAt:Date.now(),source:'underdog-exposure'};
+  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now(),source:'underdog-exposure'};
   const prev=next[key];
   if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit||prev.name!==val.name){
    next[key]=val;changed=true;
@@ -399,29 +352,6 @@ function exposureCount(name,st){
  }
  return count;
 }
-function nbaExposureCount(name,st){
- const full=norm(name);if(!full)return 0;
- const official=cached.officialExposure['nba::'+full];
- if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
-
- const universe=Object.entries(cached.playerUniverse)
-  .filter(([,u])=>u?.sport==='NBA')
-  .map(([key])=>key);
- const rawMatchesFull=raw=>{
-  raw=norm(raw);if(!raw)return false;
-  if(raw===full)return true;
-  if(!aliasKeys(full).includes(raw))return false;
-  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(raw)))];
-  return matches.length===1&&matches[0]===full;
- };
- let count=0;
- for(const d of cached.drafts){
-  if((d.sport||'UNKNOWN')!=='NBA')continue;
-  if(cached.selected!=='ALL'&&d.contest!==cached.selected)continue;
-  if((d.players||[]).some(p=>rawMatchesFull(p.name)))count++;
- }
- return count;
-}
 function exposureTier(count,total,maxCount){
  const pct=total?count/total:0, rel=maxCount?count/maxCount:0;
  if(count>0&&rel>=.75)return 'nuke-exposure-green';
@@ -439,7 +369,7 @@ function renderBadges(){
  document.querySelectorAll('[data-nuke-exposure],[data-nuke-correlation]').forEach(b=>b.remove()); document.querySelectorAll('.nuke-qb-stack,.nuke-bringback,.nuke-same-team').forEach(el=>el.classList.remove('nuke-qb-stack','nuke-bringback','nuke-same-team')); document.querySelectorAll('[data-nuke-stack]').forEach(el=>{el.classList.remove('nuke-stack-row');delete el.dataset.nukeStack});
  const rows=findPlayerRows(); rememberPlayerUniverse(rows);
  const drafted=cached.sport==='NFL'?draftedNFL():[];
- const counts=rows.map(({name})=>cached.sport==='NBA'?nbaExposureCount(name,st):exposureCount(name,st));
+ const counts=rows.map(({name})=>exposureCount(name,st));
  const maxCount=Math.max(0,...counts);
  for(let i=0;i<rows.length;i++){
   const {name,el,row}=rows[i];
