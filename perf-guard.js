@@ -3,6 +3,42 @@
 if(globalThis.__NUKE_PERF_GUARD__)return;
 globalThis.__NUKE_PERF_GUARD__=true;
 
+const Core=globalThis.NukeExposure;
+const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
+function validContestName(name){
+ const x=clean(name);if(!x||x===Core?.NONE||x==='ALL'||x.length>100)return false;
+ if(/^waiting(?:\s+for)?(?:\s+\d+)?(?:\s+more)?(?:\s+(?:people|person|players?|spots?))?$/i.test(x))return false;
+ if(/^(?:filled|draft full|starting soon|on the clock|your turn)$/i.test(x))return false;
+ if(/^\$[\d,.]+\s+drafts?$/i.test(x))return false;
+ if(/^\d+\s+picks?\s+away$/i.test(x))return false;
+ if(/^\d+(?:\.\d+)?%\s+.+\bboost$/i.test(x)||/\bboost$/i.test(x))return false;
+ if(/^(?:active drafts?|add picks?|basic tournament info|daily|slates?|lobby|active|completed|players|drafts|your teams?|your picks|home|rankings|exposure|entry|entries|prizes?|games|entrants|enter|draft now)$/i.test(x))return false;
+ if(/^(?:NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b.*(?:slate|drafts?|picks?)\b/i.test(x))return false;
+ return true;
+}
+const validChoice=x=>x===Core?.NONE||x==='ALL'||validContestName(x);
+const cleanScope=s=>s&&typeof s==='object'&&!validChoice(s.contest)?{...s,contest:Core?.NONE||'__NO_TOURNAMENT__'}:s;
+const sanitizeValues=values=>{
+ if(!values||typeof values!=='object')return values;
+ const out={...values};
+ if(Array.isArray(out.knownTournaments))out.knownTournaments=out.knownTournaments.filter(x=>validContestName(x?.contest));
+ if('activePageScope'in out)out.activePageScope=cleanScope(out.activePageScope);
+ if('exposureScope'in out)out.exposureScope=cleanScope(out.exposureScope);
+ if('lastSelectedContest'in out&&!validChoice(out.lastSelectedContest))out.lastSelectedContest=Core?.NONE||'__NO_TOURNAMENT__';
+ return out;
+};
+
+// Keep bad UI labels out of storage even if Underdog's structured payloads use
+// generic fields such as `name` or `title` that resemble tournament metadata.
+try{
+ const area=chrome?.storage?.local;
+ if(area){
+  const nativeGet=area.get.bind(area),nativeSet=area.set.bind(area);
+  area.get=async(...args)=>sanitizeValues(await nativeGet(...args));
+  area.set=(values,...args)=>nativeSet(sanitizeValues(values),...args);
+ }
+}catch{}
+
 // Underdog mutates the draft DOM constantly. The extension only needs exposure
 // refreshes on a human-readable cadence, not once per individual React mutation.
 const NativeObserver=globalThis.MutationObserver;
