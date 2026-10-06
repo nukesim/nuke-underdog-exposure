@@ -1,7 +1,10 @@
 (() => {
 'use strict';
+const Core=globalThis.NukeExposure;
+let knownTournaments=[],activePageScope=null,lastRoute='',scopeReady=false;
+const routeScopes=new Map();
 const clean=s=>(s||'').replace(/\s+/g,' ').trim();
-let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null,officialExposure:{},playerUniverse:{}};
+let alive=true, scanTimer=null, captureTimer=null, scanBusy=false, cached={drafts:[],sport:'ALL',selected:'ALL',stats:null,officialExposure:{},playerUniverse:{},knownTournaments:[],activePageScope:null};
 
 const safe=async fn=>{if(!alive)return null;try{return await fn()}catch(e){if(String(e).includes('Extension context invalidated'))alive=false;return null}};
 const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,'');
@@ -18,7 +21,7 @@ function harvestStructured(root){
   const roster=v.players||v.roster||v.draft_picks||v.picks;
   const draftId=String(v.draft_id||v.draftId||v.entry_id||v.id||'');
   if(contest&&Array.isArray(roster)&&roster.length>=2){
-   const players=roster.map(p=>({id:String(p?.player_id||p?.id||''),name:clean(p?.player_name||p?.name||p?.full_name||p?.appearance?.name||'')})).filter(p=>p.name);
+   const players=roster.map(p=>Core.resolve(Core.player(p),identityPool())).filter(p=>p.name);
    if(players.length>=2)found.push({draftId:draftId||[contest,...players.map(p=>norm(p.name)).sort()].join('|'),sport:sport||'UNKNOWN',format:'Daily Draft',contest:contestNorm(contest),players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
   }
   for(const x of Object.values(v))walk(x,depth+1);
@@ -32,7 +35,7 @@ function harvestOfficialExposureStructured(root){
   if(Array.isArray(v)){for(const x of v)walk(x,depth+1,totalHint);return}
   const localTotal=Number(v.total_drafts||v.draft_count||v.drafts_count||v.total_entries||v.entry_count||totalHint||0);
   const p=v.player||v.appearance||v;
-  const name=clean(p?.full_name||p?.player_name||p?.name||v.player_name||v.full_name||'');
+  const name=Core.player({...v,player:p}).name;
   const pctRaw=v.drafted_percentage??v.drafted_percent??v.drafted_pct??v.exposure_percentage??v.exposure_percent??v.exposure_pct;
   const countRaw=v.drafted_count??v.times_drafted??v.exposure_count??v.count;
   let pct=Number(pctRaw),count=Number(countRaw);
@@ -46,20 +49,23 @@ function harvestOfficialExposureStructured(root){
  };
  walk(root);return out;
 }
-async function ingestStructured(data,kind='',url=''){
+async function ingestStructured(data,kind='',url='',pageUrl=location.href){
+ await rememberStructuredIdentities(data);
+ if(pageUrl===location.href)rememberTournamentScopes(data);
+ syncNavigation();
  const found=harvestStructured(data);
  if(found.length){
   const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
   for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();
  }
- if(/exposure/i.test(String(url||''))){
+ if(/exposure/i.test(String(url||''))&&location.pathname.includes('/exposure/')&&pageUrl===location.href&&activePageScope?.contest!==Core.NONE&&activePageScope){
   const hits=harvestOfficialExposureStructured(data);
   if(hits.length){
    const next={...cached.officialExposure};let changed=false;
    for(const x of hits){
     const total=Number(x.total||cached.stats?.total||0);
     if(!total||x.count<0||x.count>total)continue;
-    const key=norm(x.name),val={name:x.name,count:Number(x.count),total,pct:Number(x.pct),capturedAt:Date.now(),source:'underdog-exposure-api'};
+    const key=Core.scopeKey(activePageScope)+'|'+norm(x.name),val={name:x.name,count:Number(x.count),total,pct:Number(x.pct),capturedAt:Date.now(),source:'underdog-exposure-api',scope:{...activePageScope}};
     const prev=next[key];
     if(!prev||prev.count!==val.count||prev.total!==val.total||prev.name!==val.name){next[key]=val;changed=true}
    }
@@ -68,7 +74,7 @@ async function ingestStructured(data,kind='',url=''){
  }
  scheduleRender(0)
 }
-window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url)});
+window.addEventListener('message',e=>{if(e.source===window&&e.data?.source==='NUKE_UD_BRIDGE'&&e.data.data)ingestStructured(e.data.data,e.data.kind,e.data.url,e.data.pageUrl)});
 function canonicalHistoricalName(name){
  const raw=norm(name);if(!raw)return '';
  if(cached.playerUniverse[raw])return raw;
@@ -80,7 +86,9 @@ function canonicalHistoricalName(name){
  return matches.length===1?matches[0]:raw;
 }
 function computeStats(){
- const ds=cached.drafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
+ cached.identityPool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],cached.playerUniverse,cached.drafts,cached.officialExposure);
+ cached.resolvedDrafts=Core.displayDrafts(cached.drafts,cached.identityPool);
+ const ds=cached.resolvedDrafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
   const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
@@ -93,24 +101,89 @@ function computeStats(){
  }
  cached.stats={total:ds.length,map,pairs};
 }
-function dedupeStoredDrafts(drafts){
- const out=[],seen=new Map();
- const fp=d=>[(d.sport||'UNKNOWN'),d.contest||'',...(d.players||[]).map(p=>aliasKeys(p.name).at(-1)||norm(p.name)).sort()].join('|');
- for(const d of drafts||[]){
-  const k=fp(d);if(!k||!(d.players||[]).length){out.push(d);continue}
-  if(!seen.has(k)){seen.set(k,out.length);out.push(d);continue}
-  const i=seen.get(k),old=out[i];
-  // Prefer structured/API identity and richer full names over DOM surname copies.
-  const score=x=>(String(x.draftId||'').startsWith('dom|')?0:100)+(x.players||[]).filter(p=>tokens(p.name).length>=2).length;
-  if(score(d)>score(old))out[i]=d;
+function identityPool(){return cached.identityPool||Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],cached.playerUniverse,cached.drafts,cached.officialExposure)}
+function dedupeStoredDrafts(drafts){return Core.displayDrafts(drafts,identityPool())}
+async function rememberStructuredIdentities(root){
+ const next={...cached.playerUniverse};let changed=false;const seen=new WeakSet();
+ const walk=(v,depth=0)=>{if(!v||typeof v!=='object'||depth>12||seen.has(v))return;seen.add(v);if(Array.isArray(v)){v.forEach(x=>walk(x,depth+1));return}
+  if(v.first_name||v.firstName||v.player_id||v.playerId||v.player||v.appearance){const p=Core.player(v);if(p.name.includes(' ')&&p.ids.length){const key=norm(p.name),old=next[key]||{};const value={...old,...p,ids:[...new Set([...(old.ids||[]),...p.ids])],pos:p.pos||old.pos||'',team:p.team||old.team||''};if(JSON.stringify(value)!==JSON.stringify(old)){next[key]=value;changed=true}}}
+  Object.values(v).forEach(x=>walk(x,depth+1));
+ };walk(root);if(changed){cached.playerUniverse=next;cached.identityPool=null;await safe(()=>chrome.storage.local.set({playerUniverse:next}));computeStats()}
+}
+function pageSport(){return location.pathname.match(/\/(nfl|nba|mlb|nhl|pga|mma|wnba|cfb|cbb|soccer)(?:\/|$)/i)?.[1]?.toUpperCase()||detectSport()}
+function rememberTournamentScopes(root){
+ const seen=new WeakSet();
+ const walk=(v,depth=0)=>{if(!v||typeof v!=='object'||depth>12||seen.has(v))return;seen.add(v);if(Array.isArray(v)){v.forEach(x=>walk(x,depth+1));return}
+  const t=v.tournament||v.contest;
+  const name=contestNorm(v.tournament_name||v.contest_name||t?.title||t?.name||'');
+  if(name){const scope={sport:clean(v.sport_name||v.sport||t?.sport||pageSport()).toUpperCase(),contest:name};const ids=[v.draft_id,v.draftId,v.tournament_id,v.contest_id,t?.id];if(t&&v.id)ids.push(v.id);for(const id of ids.filter(Boolean))routeScopes.set(String(id),scope);if(!knownTournaments.some(x=>Core.sameScope(x,scope))){knownTournaments.push(scope);safe(()=>chrome.storage.local.set({knownTournaments}))}}
+  Object.values(v).forEach(x=>walk(x,depth+1));
+ };walk(root);
+}
+function visibleTournamentNames(){
+ const sport=pageSport(),found=[];
+ const elements=[...document.querySelectorAll('h1,h2,h3,[data-tournament-name]')];
+ // Underdog also renders card titles as ordinary spans/divs.
+ for(const el of document.querySelectorAll('span,div')){
+  if(el.childElementCount||el.offsetParent===null)continue;
+  const name=contestNorm(el.textContent);if(!name||name.length>100)continue;
+  if(knownTournaments.some(x=>x.contest===name)){elements.push(el);continue}
+  let box=el.parentElement;for(let i=0;i<4&&box&&box!==document.body;i++,box=box.parentElement){const text=box.innerText||'';if(text.length<1500&&/\bEntry\b/i.test(text)&&/\bPrizes\b/i.test(text)&&/\bdrafts?\b/i.test(text)){if(!/^(Entry|Prizes|Games|Entrants)$/i.test(name)&&!/^\$|^\d/.test(name))elements.push(el);break}}
  }
- return out;
+ for(const el of elements){
+  if(el.offsetParent===null||el.closest('[id^="nuke-"]'))continue;
+  const name=contestNorm(el.dataset.tournamentName||el.textContent);
+  if(!name||name.length>100||/^(Daily|Slates|Lobby|Active|Completed|Players|Drafts|Your teams?|Your picks|Home|Rankings|Exposure|Entry|Prizes|Games|Entrants|Enter|Draft now)$/i.test(name)||/^(NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b|^Round\s+\d/i.test(name))continue;
+  if(!found.some(x=>x.contest===name))found.push({sport,contest:name});
+ }
+ return found;
+}
+function discoverTournaments(){
+ const found=visibleTournamentNames();if(!found.length)return;
+ const byKey=new Map(knownTournaments.map(x=>[Core.scopeKey(x),x]));let changed=false;
+ for(const s of found)if(!byKey.has(Core.scopeKey(s))){byKey.set(Core.scopeKey(s),s);changed=true}
+ if(changed){knownTournaments=[...byKey.values()];safe(()=>chrome.storage.local.set({knownTournaments}))}
+}
+function syncActiveScope(force=false){
+ discoverTournaments();const route=location.href,changed=route!==lastRoute;
+ const names=visibleTournamentNames();let scope=null;
+ const routeId=location.pathname.split('/').filter(Boolean).at(-1);
+ if(routeScopes.has(routeId))scope=routeScopes.get(routeId);
+ if(location.pathname.includes('/completed/')){const contest=detectCompletedContest();if(contest)scope={sport:pageSport(),contest}}
+ else if(/\/(draft|tournament|contest|exposure)\//.test(location.pathname)&&names.length===1)scope=names[0];
+ // During SPA navigation the old heading can survive for one frame.
+ if(changed&&!routeScopes.has(routeId)&&Core.sameScope(scope,activePageScope))scope=null;
+ if(!scope&&changed){scope={sport:pageSport(),contest:Core.NONE}}
+ if(!scope&&!force)return activePageScope;
+ if(!scope)scope=activePageScope||{sport:pageSport(),contest:Core.NONE};
+ lastRoute=route;
+ if(!Core.sameScope(scope,activePageScope)||changed||force){activePageScope=scope;cached.sport=scope.sport;cached.selected=scope.contest;computeStats();safe(()=>chrome.storage.local.set({activePageScope:scope,exposureScope:scope,knownTournaments}));scheduleRender(0)}
+ return scope;
+}
+// A lobby has several tournaments. Capture the selected card instead of
+// guessing that last week's saved tournament is the active one.
+let pendingTournament=null;
+document.addEventListener('click',e=>{
+ const path=e.composedPath?.()||[];
+ for(const el of path){if(!el?.querySelectorAll||el===document.body)continue;
+  const headings=[el,...el.querySelectorAll('h1,h2,h3,[data-tournament-name],span,div')].filter(x=>!x.childElementCount||/^H[123]$/.test(x.tagName));
+  const matches=[...new Set(headings.map(x=>contestNorm(x.dataset?.tournamentName||x.textContent)).filter(x=>knownTournaments.some(t=>t.contest===x)))];
+  if(matches.length!==1)continue;const contest=matches[0];
+  pendingTournament={scope:{sport:pageSport(),contest},from:location.href,at:Date.now()};break;
+ }
+},true);
+function syncNavigation(){
+ const route=location.href;if(pendingTournament&&route!==pendingTournament.from&&Date.now()-pendingTournament.at<10000&&/\/(draft|tournament|contest|lobby)\//.test(location.pathname)){
+  const scope=pendingTournament.scope;pendingTournament=null;lastRoute=route;activePageScope=scope;cached.sport=scope.sport;cached.selected=scope.contest;computeStats();safe(()=>chrome.storage.local.set({activePageScope:scope,exposureScope:scope}));scheduleRender(0);return scope;
+ }
+ return syncActiveScope();
 }
 async function hydrate(){
- const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL',officialExposure:{},playerUniverse:{}}));if(!x)return;
+ const x=await safe(()=>chrome.storage.local.get({drafts:[],exposureScope:null,lastSelectedSport:'ALL',lastSelectedContest:'ALL',officialExposure:{},playerUniverse:{},knownTournaments:[],activePageScope:null}));if(!x)return;
+ cached.playerUniverse=x.playerUniverse||{};cached.drafts=x.drafts||[];cached.officialExposure=x.officialExposure||{};knownTournaments=x.knownTournaments||[];
  const repaired=dedupeStoredDrafts(x.drafts||[]);
- if(repaired.length!==(x.drafts||[]).length)await safe(()=>chrome.storage.local.set({drafts:repaired}));
- cached.drafts=repaired;cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL';cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL';cached.officialExposure=x.officialExposure||{};cached.playerUniverse=x.playerUniverse||{};computeStats();scheduleRender(0);
+ if(JSON.stringify(repaired)!==JSON.stringify(x.drafts||[]))await safe(()=>chrome.storage.local.set({drafts:repaired}));
+ cached.drafts=repaired;cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL';cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL';cached.officialExposure=x.officialExposure||{};cached.playerUniverse=x.playerUniverse||{};computeStats();scopeReady=true;syncNavigation();scheduleRender(0);
 }
 function rosterStrings(){
  const out=[];
@@ -161,7 +234,7 @@ async function captureCompleted(){
  for(const [k,v] of Object.entries(universe))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
  for(const v of Object.values(official))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
  for(const d of current)for(const p of (d.players||[]))if(tokens(p.name).length>=2)stableFullNames.set(norm(p.name),clean(p.name));
- const expand=raw=>{raw=clean(raw);if(tokens(raw).length>=2)return raw;const key=norm(raw),m=[...stableFullNames.entries()].filter(([full])=>aliasKeys(full).includes(key));return m.length===1?m[0][1]:raw};
+ const expand=raw=>Core.resolve({name:raw,sport},identityPool()).name;
  const fp=players=>players.map(p=>aliasKeys(p.name).at(-1)||norm(p.name)).sort().join('|');
  const existingFingerprints=new Map();
  current.forEach((d,i)=>{if(d.contest===contest)existingFingerprints.set(fp(d.players||[]),i)});
@@ -197,7 +270,12 @@ function findPlayerRows(){
   for(let i=0;i<4&&row&&root.contains(row);i++,row=row.parentElement){
    const t=clean(row.innerText),rect=row.getBoundingClientRect();
    const playerLike=/\b(QB|RB|WR|TE|PG|SG|SF|PF|C|P|OF|LW|RW|G|F)\d*\b/i.test(t)&&(/\bvs\b|\s@\s/i.test(t))&&/\d+(?:\.\d+)?/.test(t);
-   if(playerLike&&rect.width>300&&rect.height>=35&&rect.height<=85){const key=norm(name)+'|'+Math.round(rect.top);if(!seen.has(key)){seen.add(key);rows.push({name,el,row})}break}
+   if(playerLike&&rect.width>300&&rect.height>=35&&rect.height<=85){
+    const meta=nflRowMeta(row);let identity=Core.resolve({name,...meta,sport:cached.sport},identityPool());
+    if(identity.unresolved){const combined=clean(el.parentElement?.textContent);const joined=Core.resolve({name:combined,...meta,sport:cached.sport},identityPool());if(!joined.unresolved)identity=joined}
+    if(identity.unresolved)break;
+    const key=norm(identity.name)+'|'+Math.round(rect.top);if(!seen.has(key)){seen.add(key);rows.push({name:identity.name,el,row})}break;
+   }
   }
  }
  return rows;
@@ -262,11 +340,11 @@ function correlationTag(meta,drafted){
 async function rememberPlayerUniverse(rows){
  let changed=false;
  for(const {name,row} of rows){
-  const meta=nflRowMeta(row),key=norm(name);if(!key)continue;
+  const meta=nflRowMeta(row),resolved=Core.resolve({name,...meta,sport:cached.sport},identityPool()),key=norm(resolved.name);if(!key||resolved.unresolved)continue;
   const prev=cached.playerUniverse[key]||{};
   // Monotonic enrichment: scrolling/virtualized rows may briefly omit metadata.
   // Never replace known identity fields with blanks from a recycled DOM node.
-  const next={name:clean(name)||prev.name||'',pos:meta.pos||prev.pos||'',team:meta.team||prev.team||''};
+  const next={...prev,...resolved,pos:meta.pos||prev.pos||'',team:meta.team||prev.team||''};
   if(JSON.stringify(prev)!==JSON.stringify(next)){cached.playerUniverse[key]=next;changed=true}
  }
  // Do not trigger another render here. renderBadges already has the exact rows
@@ -276,6 +354,7 @@ async function rememberPlayerUniverse(rows){
 }
 async function captureOfficialExposure(){
  if(!location.pathname.includes('/exposure/'))return;
+ const scope=syncNavigation();if(!scope||scope.contest===Core.NONE)return;
  const bodyText=document.body.innerText||'';
  const totalMatch=bodyText.match(/(?:Showing:\s*All\s*)?(\d+)\s*drafts/i);
  const total=Number(totalMatch?.[1]||0);if(!total)return;
@@ -313,12 +392,12 @@ async function captureOfficialExposure(){
    }
   }
   if(!name)continue;
-  const key=norm(name);
+  const key=Core.scopeKey(scope)+'|'+norm(name);
   // Require a real full name for authoritative identity. A bare surname can
   // never overwrite an exact player's record.
   if(tokens(name).length<2)continue;
   const count=Math.round(total*hit/100);
-  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now(),source:'underdog-exposure'};
+  const val={name:clean(name),count,total,pct:hit,capturedAt:Date.now(),source:'underdog-exposure',scope:{...scope}};
   const prev=next[key];
   if(!prev||prev.count!==count||prev.total!==total||prev.pct!==hit||prev.name!==val.name){
    next[key]=val;changed=true;
@@ -332,23 +411,16 @@ function exposureCount(name,st){
  // Underdog Exposure is authoritative whenever we have an exact full-name
  // capture. Accept the newest value even if its denominator is one draft behind
  // the local tracker; the numerator is still the user's actual ownership count.
- const official=cached.officialExposure[full];
- if(official&&official.count>=0&&Number(official.total||0)===Number(st.total||0))return official.count;
+ const scope={sport:cached.sport,contest:cached.selected};
+ const official=cached.officialExposure[Core.scopeKey(scope)+'|'+full];
+ const officialValue=Core.officialCount(official,scope,st.total);if(officialValue!==null)return officialValue;
 
  // Fallback: count completed drafts directly. A player contributes at most once
  // per draft. Historical short names are accepted only if unique on this slate.
- const universe=Object.keys(cached.playerUniverse);
- const rawMatchesFull=raw=>{
-  raw=norm(raw);if(!raw)return false;
-  if(raw===full)return true;
-  if(!aliasKeys(full).includes(raw))return false;
-  const matches=[...new Set(universe.filter(n=>aliasKeys(n).includes(raw)))];
-  return matches.length===1&&matches[0]===full;
- };
  let count=0;
- for(const d of cached.drafts){
-  if((cached.sport!=='ALL'&&(d.sport||'UNKNOWN')!==cached.sport)||(cached.selected!=='ALL'&&d.contest!==cached.selected))continue;
-  if((d.players||[]).some(p=>rawMatchesFull(p.name)))count++;
+ for(const d of cached.resolvedDrafts||[]){
+  if(!Core.matchesScope(d,scope))continue;
+  if((d.players||[]).some(p=>!p.unresolved&&norm(p.name)===full))count++;
  }
  return count;
 }
@@ -388,8 +460,8 @@ function renderBadges(){
 }
 function draftedNames(){return [...new Set(draftedNFL().map(x=>x.name).filter(Boolean))]}
 function namesMatch(a,b){
- const ak=aliasKeys(a),bk=aliasKeys(b);
- return ak.some(x=>bk.includes(x))||bk.some(x=>ak.includes(x));
+ const x=Core.resolve({name:a,sport:cached.sport},identityPool()),y=Core.resolve({name:b,sport:cached.sport},identityPool());
+ return !x.unresolved&&!y.unresolved&&norm(x.name)===norm(y.name);
 }
 function pairCount(a,b){
  if(!cached.stats?.pairs)return 0;
@@ -567,26 +639,31 @@ function renderComboPanel(){
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
-function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
-const obs=new MutationObserver(m=>{if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
+function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{if(scopeReady)syncNavigation();renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
+const obs=new MutationObserver(m=>{if(scopeReady)syncNavigation();if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
+ if(changes.knownTournaments)knownTournaments=changes.knownTournaments.newValue||[];
  if(changes.drafts)cached.drafts=changes.drafts.newValue||[];
  if(changes.officialExposure)cached.officialExposure=changes.officialExposure.newValue||{};
- if(changes.playerUniverse)cached.playerUniverse=changes.playerUniverse.newValue||{};
+ if(changes.playerUniverse){cached.playerUniverse=changes.playerUniverse.newValue||{};cached.identityPool=null}
  if(changes.lastSelectedSport)cached.sport=changes.lastSelectedSport.newValue||'ALL';
  if(changes.exposureScope){
   cached.sport=changes.exposureScope.newValue?.sport||'ALL';
   cached.selected=changes.exposureScope.newValue?.contest||'ALL';
  }
  if(changes.lastSelectedContest&&!changes.exposureScope)cached.selected=changes.lastSelectedContest.newValue||'ALL';
- const affectsExposure=!!(changes.drafts||changes.officialExposure||changes.lastSelectedSport||changes.exposureScope||changes.lastSelectedContest);
+ const affectsExposure=!!(changes.drafts||changes.officialExposure||changes.playerUniverse||changes.lastSelectedSport||changes.exposureScope||changes.lastSelectedContest);
  if(affectsExposure){computeStats();scheduleRender(0)}
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
- if(msg?.type==='NUKE_FORCE_SCAN'){(async()=>{await captureCompleted();await hydrate();send({ok:true,total:cached.drafts.length})})();return true}
+ if(msg?.type==='NUKE_FORCE_SCAN'){setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},500);
+window.addEventListener('popstate',()=>{if(scopeReady)syncNavigation()});
+(async()=>{await hydrate();const scope=syncNavigation();await captureCompleted();send({ok:true,total:cached.drafts.length,scope})})();return true}
 });
+setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},500);
+window.addEventListener('popstate',()=>{if(scopeReady)syncNavigation()});
 (async()=>{await hydrate();await captureCompleted();await captureOfficialExposure();scheduleRender(0)})();
 })();
