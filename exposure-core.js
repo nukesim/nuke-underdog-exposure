@@ -30,7 +30,7 @@
   if(p.team)hits=hits.filter(x=>norm(x.team)===norm(p.team)||norm(x.teamAbbr)===norm(p.team));
   return hits;
  }
- function merged(p,hit){return {...p,name:hit.name,pos:p.pos||hit.pos,team:p.team||hit.team,sport:p.sport||hit.sport,ids:[...new Set([...p.ids,...(hit.ids||[])])],id:p.id||hit.id,unresolved:false}}
+ function merged(p,hit){return {...p,name:hit.name,pos:p.pos||hit.pos,team:p.team||hit.team,sport:p.sport||hit.sport,ids:[...new Set([...p.ids,...(hit.ids||[])])],id:p.id||hit.id,_rank:Number.isFinite(Number(hit._rank))?Number(hit._rank):p._rank,unresolved:false}}
  function resolve(raw,pool){const p=player(raw),hits=candidates(p,pool);if(hits.length!==1)return {...p,unresolved:hits.length>1||!p.name.includes(' ')};return merged(p,hits[0])}
  function resolveRoster(players,pool,sport=''){
   const src=players||[],sportName=clean(sport||src.find(x=>x?.sport)?.sport||'').toUpperCase();
