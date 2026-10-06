@@ -27,6 +27,17 @@ test('unique compound and suffix surnames resolve',()=>{
  assert.equal(Core.resolve({name:'Walker III'},Core.catalog([{name:'Kenneth Walker III',id:'walker'}])).name,'Kenneth Walker III');
  assert.equal(Core.resolve({name:'St. Brown',id:pool.find(x=>x.name==='Amon-Ra St. Brown').id},pool).name,'Amon-Ra St. Brown');
 });
+test('Week 5 completed six-player rosters resolve ambiguous surname cards from roster context',()=>{
+ const drafts=[
+  {draftId:'dom|week5|one',...scope5,source:'completed-dom',players:[{name:'St. Brown'},{name:'McCaffrey'},{name:'Jeanty'},{name:'Jefferson'},{name:'Shough'},{name:'Johnson'}]},
+  {draftId:'dom|week5|two',...scope5,source:'completed-dom',players:[{name:'St. Brown'},{name:'Bowers'},{name:'Chase'},{name:'Love'},{name:'Swift'},{name:'Daniels'}]}
+ ];
+ const ds=Core.displayDrafts(drafts,pool);
+ assert.equal(ds.length,2);
+ assert.deepEqual(ds[0].players.map(p=>p.name),['Amon-Ra St. Brown','Christian McCaffrey','Ashton Jeanty','Justin Jefferson','Tyler Shough','Juwan Johnson']);
+ assert.deepEqual(ds[1].players.map(p=>p.name),['Amon-Ra St. Brown','Brock Bowers',"Ja'Marr Chase",'Jeremiyah Love',"D'Andre Swift",'Jayden Daniels']);
+ assert.ok(ds.flatMap(d=>d.players).every(p=>!p.unresolved));
+});
 test('legacy exposure and same-denominator other tournament never override',()=>{
  const old={name:'Keenan Allen',count:20,total:127};
  assert.equal(Core.officialCount(old,scope5,127),null);
