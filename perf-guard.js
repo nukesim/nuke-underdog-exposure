@@ -5,6 +5,7 @@ globalThis.__NUKE_PERF_GUARD__=true;
 
 const Core=globalThis.NukeExposure;
 const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
+const liveRoom=()=>/\/draft\//i.test(location.pathname);
 function validContestName(name){
  const x=clean(name);if(!x||x===Core?.NONE||x==='ALL'||x.length>100)return false;
  if(/^waiting(?:\s+for)?(?:\s+\d+)?(?:\s+more)?(?:\s+(?:people|person|players?|spots?))?$/i.test(x))return false;
@@ -13,7 +14,7 @@ function validContestName(name){
  if(/^\d+\s+picks?\s+away$/i.test(x))return false;
  if(/^\d+(?:\.\d+)?%\s+.+\bboost$/i.test(x)||/\bboost$/i.test(x))return false;
  if(/^draft starts in\b/i.test(x))return false;
- if(/^(?:battle royales?|best ball|completed drafts?)$/i.test(x))return false;
+ if(/^(?:battle royales?|best ball|completed drafts?|underdog|qb|rb|wr|te)$/i.test(x))return false;
  if(/^(?:active drafts?|add picks?|basic tournament info|daily|slates?|lobby|active|completed|players|drafts|your teams?|your picks|home|rankings|exposure|entry|entries|prizes?|games|entrants|enter|draft now)$/i.test(x))return false;
  if(/^(?:NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b.*(?:slate|drafts?|picks?)\b/i.test(x))return false;
  return true;
@@ -29,41 +30,34 @@ const sanitizeValues=values=>{
  if('lastSelectedContest'in out&&!validChoice(out.lastSelectedContest))out.lastSelectedContest=Core?.NONE||'__NO_TOURNAMENT__';
  return out;
 };
-
 try{
  const area=chrome?.storage?.local;
- if(area){
-  const nativeGet=area.get.bind(area),nativeSet=area.set.bind(area);
-  area.get=async(...args)=>sanitizeValues(await nativeGet(...args));
-  area.set=(values,...args)=>nativeSet(sanitizeValues(values),...args);
- }
+ if(area){const nativeGet=area.get.bind(area),nativeSet=area.set.bind(area);area.get=async(...args)=>sanitizeValues(await nativeGet(...args));area.set=(values,...args)=>nativeSet(sanitizeValues(values),...args)}
 }catch{}
 
-// A live Underdog room can produce a continuous stream of React mutations.
-// Exposure can be a few seconds behind; drafting itself must stay responsive.
+// React can mutate hundreds of nodes during a pick. In a live draft, NUKE gets
+// one low-priority refresh at most every ~6 seconds instead of competing with
+// clicks, search, scrolling and the pick timer.
 const NativeObserver=globalThis.MutationObserver;
 if(NativeObserver){
  class NukeMutationObserver{
   constructor(callback){
    this._callback=callback;this._pending=[];this._timer=0;this._idle=0;
    this._native=new NativeObserver(records=>{
-    for(const r of records){if(this._pending.length>=16)break;this._pending.push(r)}
+    const cap=liveRoom()?4:16;for(const r of records){if(this._pending.length>=cap)break;this._pending.push(r)}
     if(this._timer||this._idle)return;
+    const wait=liveRoom()?6000:1200;
     this._timer=setTimeout(()=>{
      this._timer=0;
-     const run=()=>{
-      this._idle=0;
-      const batch=this._pending.splice(0);
-      if(batch.length)this._callback(batch,this);
-     };
-     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:2500});
-     else this._timer=setTimeout(run,500);
-    },3000);
+     const run=()=>{this._idle=0;const batch=this._pending.splice(0);if(batch.length)this._callback(batch,this)};
+     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:liveRoom()?3500:1500});
+     else this._timer=setTimeout(run,liveRoom()?750:250);
+    },wait);
    });
   }
   observe(...args){return this._native.observe(...args)}
   disconnect(){if(this._timer){clearTimeout(this._timer);this._timer=0}if(this._idle&&typeof cancelIdleCallback==='function'){cancelIdleCallback(this._idle);this._idle=0}this._pending.length=0;return this._native.disconnect()}
-  takeRecords(){const a=this._pending.splice(0);const b=this._native.takeRecords();return [...a,...b.slice(0,16)]}
+  takeRecords(){const cap=liveRoom()?4:16,a=this._pending.splice(0),b=this._native.takeRecords();return [...a,...b.slice(0,cap)]}
  }
  globalThis.MutationObserver=NukeMutationObserver;
 }
@@ -74,15 +68,15 @@ Document.prototype.querySelectorAll=function(selector){
  if(this===document&&selector==='span,div')return [];
  const now=Date.now();
  if(this===document&&selector==='h1,h2,h3,[data-tournament-name]'){
-  if(headingCache&&now-headingAt<2500)return headingCache;
+  const ttl=liveRoom()?15000:3000;if(headingCache&&now-headingAt<ttl)return headingCache;
   headingCache=[...nativeDocumentQSA.call(this,selector)].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));headingAt=now;return headingCache;
  }
  if(this===document&&selector==='*'){
-  if(starCache&&now-starAt<5000)return starCache;
+  const ttl=liveRoom()?30000:6000;if(starCache&&now-starAt<ttl)return starCache;
   starCache=nativeDocumentQSA.call(this,selector);starAt=now;return starCache;
  }
  if(this===document&&selector==='div'){
-  if(divCache&&now-divAt<4000)return divCache;
+  const ttl=liveRoom()?15000:5000;if(divCache&&now-divAt<ttl)return divCache;
   divCache=nativeDocumentQSA.call(this,selector);divAt=now;return divCache;
  }
  return nativeDocumentQSA.call(this,selector);
@@ -91,11 +85,9 @@ Document.prototype.querySelectorAll=function(selector){
 const nativeElementQSA=Element.prototype.querySelectorAll;
 const rowCache=new WeakMap();
 Element.prototype.querySelectorAll=function(selector){
- if(selector==='h1,h2,h3,[data-tournament-name],span,div'){
-  return [...nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]')].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));
- }
+ if(selector==='h1,h2,h3,[data-tournament-name],span,div')return [...nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]')].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));
  if(selector==='span,div,p'){
-  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<3000)return old.value;
+  const now=Date.now(),ttl=liveRoom()?4000:1500,old=rowCache.get(this);if(old&&now-old.at<ttl)return old.value;
   const value=nativeElementQSA.call(this,selector);rowCache.set(this,{at:now,value});return value;
  }
  return nativeElementQSA.call(this,selector);
