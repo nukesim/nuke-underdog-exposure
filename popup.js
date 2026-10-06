@@ -2,14 +2,24 @@ const Core=globalThis.NukeExposure;
 let knownTournaments=[],activePageScope=null;
 let activeTab="players",allDrafts=[],officialExposure={};const $=id=>document.getElementById(id);const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
 function status(t,s="working"){$("syncText").textContent=t;$("syncStatus").className="sync "+s}
+const cleanContest=s=>String(s??"").replace(/\s+/g," ").trim();
+function validContestName(name){
+ const x=cleanContest(name);if(!x||x===Core.NONE||x==="ALL")return false;
+ // Draft-room seat/status labels are transient UI text, not tournament names.
+ if(/^waiting(?:\s+for)?(?:\s+\d+)?(?:\s+more)?(?:\s+(?:people|person|players?|spots?))?$/i.test(x))return false;
+ if(/^(?:filled|draft full|starting soon|on the clock|your turn)$/i.test(x))return false;
+ return true;
+}
+const validContestChoice=x=>x===Core.NONE||x==="ALL"||validContestName(x);
 function sports(){return ["ALL",...[...new Set([...allDrafts.map(d=>d.sport),...knownTournaments.map(d=>d.sport),activePageScope?.sport].filter(Boolean))].sort()]}
 function buildFilters(prefSport,prefContest){
  const sport=prefSport||$("sport").value||"ALL";
  $("sport").innerHTML=sports().map(x=>`<option value="${esc(x)}" ${x===sport?"selected":""}>${esc(x==="ALL"?"ALL SPORTS":x)}</option>`).join("");
- const valid=[...allDrafts,...knownTournaments,activePageScope||{}].filter(d=>sport==="ALL"||d.sport===sport);
- const contests=[Core.NONE,"ALL",...[...new Set(valid.map(d=>d.contest).filter(x=>x&&x!==Core.NONE&&x!=="ALL"))].sort()];
- if(prefContest&&prefContest!=="ALL"&&!contests.includes(prefContest))contests.push(prefContest);
- const contest=prefContest||$("contest").value||Core.NONE;
+ const valid=[...allDrafts,...knownTournaments,activePageScope||{}].filter(d=>validContestName(d?.contest)&&(sport==="ALL"||d.sport===sport));
+ const contests=[Core.NONE,"ALL",...[...new Set(valid.map(d=>d.contest))].sort()];
+ if(validContestName(prefContest)&&!contests.includes(prefContest))contests.push(prefContest);
+ const requested=validContestChoice(prefContest)?prefContest:validContestChoice($("contest").value)?$("contest").value:Core.NONE;
+ const contest=contests.includes(requested)?requested:Core.NONE;
  $("contest").innerHTML=contests.map(x=>`<option value="${esc(x)}" ${x===contest?"selected":""}>${esc(x===Core.NONE?"CHOOSE TOURNAMENT":x==="ALL"?"ALL TOURNAMENTS":x)}</option>`).join("");
 }
 async function persist(){await chrome.storage.local.set({exposureScope:{sport:$("sport").value||"ALL",contest:$("contest").value||"ALL"},lastSelectedContest:$("contest").value||"ALL"})}
@@ -39,17 +49,30 @@ function empty(){return '<div class="empty">No completed drafts captured for thi
 function render(){const ds=filtered(),ps=playerStats(ds),cs=comboStats(ds);$("draftCount").textContent=ds.length;$("playerCount").textContent=ps.length;$("comboCount").textContent=cs.length;const q=$("search").value.toLowerCase();if(activeTab==="drafts"){$("view").innerHTML=ds.length?ds.map(d=>`<div class="row"><div><b>${esc(d.contest)}</b><br><small>${esc((d.players||[]).map(p=>fullName(p)).join(", "))}</small></div><div></div><div class="num">${new Date(d.capturedAt).toLocaleDateString()}</div></div>`).join(""):empty();return}const rows=(activeTab==="players"?ps:cs).filter(x=>x.name.toLowerCase().includes(q));$("view").innerHTML=rows.length?rows.map(x=>`<div class="row"><div><b>${esc(x.name)}</b><div class="bar"><i style="width:${Math.min(100,x.pct)}%"></i></div></div><div class="num">${x.count}/${ds.length}</div><div class="pct">${x.pct.toFixed(1)}%</div></div>`).join(""):empty()}
 async function readStorage(scopeOverride=null){
  const d=await chrome.storage.local.get({drafts:[],exposureScope:{sport:"ALL",contest:"ALL"},lastSelectedContest:"ALL",playerUniverse:{},officialExposure:{},knownTournaments:[],activePageScope:null});
- knownTournaments=d.knownTournaments||[];activePageScope=d.activePageScope;allDrafts=d.drafts||[];playerUniverse=d.playerUniverse||{};officialExposure=d.officialExposure||{};
- const scope=scopeOverride||d.exposureScope||{sport:"ALL",contest:d.lastSelectedContest||"ALL"};buildFilters(scope.sport,scope.contest);render();
+ const rawKnown=d.knownTournaments||[];
+ knownTournaments=rawKnown.filter(x=>validContestName(x?.contest));
+ activePageScope=validContestName(d.activePageScope?.contest)?d.activePageScope:null;
+ // Ignore any false draft records whose "contest" was actually a live draft-room status.
+ allDrafts=(d.drafts||[]).filter(x=>validContestName(x?.contest));
+ playerUniverse=d.playerUniverse||{};officialExposure=d.officialExposure||{};
+ const rawScope=scopeOverride||d.exposureScope||{sport:"ALL",contest:d.lastSelectedContest||"ALL"};
+ const fallback=activePageScope||{sport:rawScope?.sport||"ALL",contest:Core.NONE};
+ const scope=validContestChoice(rawScope?.contest)?{sport:rawScope?.sport||"ALL",contest:rawScope.contest}:fallback;
+ buildFilters(scope.sport,scope.contest);render();
+ const updates={};
+ if(knownTournaments.length!==rawKnown.length)updates.knownTournaments=knownTournaments;
+ if(d.exposureScope&&!validContestChoice(d.exposureScope.contest))updates.exposureScope=scope;
+ if(d.lastSelectedContest&&!validContestChoice(d.lastSelectedContest))updates.lastSelectedContest=scope.contest;
+ if(Object.keys(updates).length)await chrome.storage.local.set(updates);
  const n=filtered().length;status(n?"Ready · "+n+" drafts tracked":"No drafts captured yet","ok");return d;
 }
 async function load(){
  await readStorage();
- try{const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(tab?.id){const result=await chrome.tabs.sendMessage(tab.id,{type:"NUKE_FORCE_SCAN"});await readStorage(result?.scope?.contest!==Core.NONE?result?.scope:null)}}catch{}
+ try{const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(tab?.id){const result=await chrome.tabs.sendMessage(tab.id,{type:"NUKE_FORCE_SCAN"});await readStorage(validContestName(result?.scope?.contest)?result.scope:null)}}catch{}
 }
 $("sport").addEventListener("change",async()=>{buildFilters($("sport").value,"ALL");await persist();render();status("Ready · "+filtered().length+" drafts tracked","ok")});
 $("contest").addEventListener("change",async()=>{await persist();render();status("Ready · "+filtered().length+" drafts tracked","ok")});
 $("search").addEventListener("input",render);$("refresh").addEventListener("click",load);
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");activeTab=b.dataset.tab;render()}));
-chrome.storage.onChanged.addListener(async(ch,a)=>{if(a!=="local")return;if(ch.drafts||ch.officialExposure||ch.playerUniverse||ch.exposureScope||ch.knownTournaments)await readStorage()});
+chrome.storage.onChanged.addListener(async(ch,a)=>{if(a!=="local")return;if(ch.drafts||ch.officialExposure||ch.playerUniverse||ch.exposureScope||ch.knownTournaments||ch.activePageScope)await readStorage()});
 load();
