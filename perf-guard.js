@@ -12,6 +12,8 @@ function validContestName(name){
  if(/^\$[\d,.]+\s+drafts?$/i.test(x))return false;
  if(/^\d+\s+picks?\s+away$/i.test(x))return false;
  if(/^\d+(?:\.\d+)?%\s+.+\bboost$/i.test(x)||/\bboost$/i.test(x))return false;
+ if(/^draft starts in\b/i.test(x))return false;
+ if(/^(?:battle royales?|best ball|completed drafts?)$/i.test(x))return false;
  if(/^(?:active drafts?|add picks?|basic tournament info|daily|slates?|lobby|active|completed|players|drafts|your teams?|your picks|home|rankings|exposure|entry|entries|prizes?|games|entrants|enter|draft now)$/i.test(x))return false;
  if(/^(?:NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b.*(?:slate|drafts?|picks?)\b/i.test(x))return false;
  return true;
@@ -28,8 +30,6 @@ const sanitizeValues=values=>{
  return out;
 };
 
-// Keep bad UI labels out of storage even if Underdog's structured payloads use
-// generic fields such as `name` or `title` that resemble tournament metadata.
 try{
  const area=chrome?.storage?.local;
  if(area){
@@ -39,65 +39,65 @@ try{
  }
 }catch{}
 
-// Underdog's React tree can emit hundreds of mutations while a draft room is
-// updating. Batch those into one extension refresh instead of competing with
-// the site for the main thread on every mutation.
+// The Underdog draft room mutates continuously. Extension refreshes are now
+// throttled and deferred until the browser has idle time so drafting clicks win.
 const NativeObserver=globalThis.MutationObserver;
 if(NativeObserver){
  class NukeMutationObserver{
   constructor(callback){
-   this._callback=callback;this._pending=[];this._timer=0;
+   this._callback=callback;this._pending=[];this._timer=0;this._idle=0;
    this._native=new NativeObserver(records=>{
-    this._pending.push(...records);
-    if(this._timer)return;
+    // The content callback only needs to know that meaningful nodes were added.
+    // Cap the batch instead of retaining hundreds/thousands of React mutations.
+    for(const r of records){if(this._pending.length>=24)break;this._pending.push(r)}
+    if(this._timer||this._idle)return;
     this._timer=setTimeout(()=>{
      this._timer=0;
-     const batch=this._pending.splice(0);
-     if(batch.length)this._callback(batch,this);
-    },900);
+     const run=()=>{
+      this._idle=0;
+      const batch=this._pending.splice(0);
+      if(batch.length)this._callback(batch,this);
+     };
+     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:2200});
+     else this._timer=setTimeout(run,400);
+    },1800);
    });
   }
   observe(...args){return this._native.observe(...args)}
-  disconnect(){if(this._timer){clearTimeout(this._timer);this._timer=0}this._pending.length=0;return this._native.disconnect()}
-  takeRecords(){return [...this._pending.splice(0),...this._native.takeRecords()]}
+  disconnect(){if(this._timer){clearTimeout(this._timer);this._timer=0}if(this._idle&&typeof cancelIdleCallback==='function'){cancelIdleCallback(this._idle);this._idle=0}this._pending.length=0;return this._native.disconnect()}
+  takeRecords(){const a=this._pending.splice(0);const b=this._native.takeRecords();return [...a,...b.slice(0,24)]}
  }
  globalThis.MutationObserver=NukeMutationObserver;
 }
 
-// content.js historically scanned every span/div on the entire Underdog page
-// to guess tournament names. That is both expensive and the source of junk
-// options such as "$5 Drafts", "3 Picks away", and boost labels. Tournament
-// discovery now relies on headings/data attributes plus structured API data.
 const nativeDocumentQSA=Document.prototype.querySelectorAll;
-let starCache=null,starAt=0,divCache=null,divAt=0;
+let starCache=null,starAt=0,divCache=null,divAt=0,headingCache=null,headingAt=0;
 Document.prototype.querySelectorAll=function(selector){
  if(this===document&&selector==='span,div')return [];
  const now=Date.now();
- // Several exposure helpers ask for the entire DOM during the same render.
- // Reuse the same static NodeList briefly instead of repeating full-tree scans.
+ if(this===document&&selector==='h1,h2,h3,[data-tournament-name]'){
+  if(headingCache&&now-headingAt<1800)return headingCache;
+  headingCache=[...nativeDocumentQSA.call(this,selector)].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));headingAt=now;return headingCache;
+ }
  if(this===document&&selector==='*'){
-  if(starCache&&now-starAt<650)return starCache;
+  if(starCache&&now-starAt<3000)return starCache;
   starCache=nativeDocumentQSA.call(this,selector);starAt=now;return starCache;
  }
  if(this===document&&selector==='div'){
-  if(divCache&&now-divAt<500)return divCache;
+  if(divCache&&now-divAt<2200)return divCache;
   divCache=nativeDocumentQSA.call(this,selector);divAt=now;return divCache;
  }
  return nativeDocumentQSA.call(this,selector);
 };
 
-// The click tracker used the same broad descendant scan on every click. Keep
-// heading/data-attribute discovery, but never walk thousands of generic nodes
-// just because the user clicked a draft button. Also memoize the player-row
-// scan briefly because the same pool is queried several times per render.
 const nativeElementQSA=Element.prototype.querySelectorAll;
 const rowCache=new WeakMap();
 Element.prototype.querySelectorAll=function(selector){
  if(selector==='h1,h2,h3,[data-tournament-name],span,div'){
-  return nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]');
+  return [...nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]')].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));
  }
  if(selector==='span,div,p'){
-  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<450)return old.value;
+  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<1600)return old.value;
   const value=nativeElementQSA.call(this,selector);rowCache.set(this,{at:now,value});return value;
  }
  return nativeElementQSA.call(this,selector);
