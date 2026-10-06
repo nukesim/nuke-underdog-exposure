@@ -5,12 +5,15 @@ function status(t,s="working"){$("syncText").textContent=t;$("syncStatus").class
 const cleanContest=s=>String(s??"").replace(/\s+/g," ").trim();
 function validContestName(name){
  const x=cleanContest(name);if(!x||x===Core.NONE||x==="ALL"||x.length>100)return false;
- // Draft-room status / promotional / navigation labels are not tournament names.
+ // Only real contest/tournament names belong here. Lobby categories, countdowns,
+ // promo labels and draft-room statuses must never become scope choices.
  if(/^waiting(?:\s+for)?(?:\s+\d+)?(?:\s+more)?(?:\s+(?:people|person|players?|spots?))?$/i.test(x))return false;
  if(/^(?:filled|draft full|starting soon|on the clock|your turn)$/i.test(x))return false;
  if(/^\$[\d,.]+\s+drafts?$/i.test(x))return false;
  if(/^\d+\s+picks?\s+away$/i.test(x))return false;
  if(/^\d+(?:\.\d+)?%\s+.+\bboost$/i.test(x)||/\bboost$/i.test(x))return false;
+ if(/^draft starts in\b/i.test(x))return false;
+ if(/^(?:battle royales?|best ball|completed drafts?)$/i.test(x))return false;
  if(/^(?:active drafts?|add picks?|basic tournament info|daily|slates?|lobby|active|completed|players|drafts|your teams?|your picks|home|rankings|exposure|entry|entries|prizes?|games|entrants|enter|draft now)$/i.test(x))return false;
  if(/^(?:NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b.*(?:slate|drafts?|picks?)\b/i.test(x))return false;
  return true;
