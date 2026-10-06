@@ -26,6 +26,17 @@ test('actual popup keeps zero-draft Week 5 and resolves names on players/combos/
  $('#contest').value=week5.contest;$('#contest').dispatchEvent(new w.Event('change'));await until(()=>$('#draftCount').textContent==='0');
  }finally{w.observers.forEach(x=>x.disconnect());w.close()}
 });
+test('popup rejects lobby categories, promos and countdowns as tournaments',async()=>{
+ const html=source('popup.html').replace(/<script[^>]*><\/script>/g,'');
+ const junk=['Battle Royales','Best Ball','Completed drafts','Draft starts in 00:01','Draft starts in 00:14','$5 Drafts','3 Picks away','30% MLB Boost','Active drafts','Add picks','Basic tournament info'];
+ const initial={drafts:[],exposureScope:week5,knownTournaments:[week5,...junk.map(contest=>({sport:'NFL',contest}))],playerUniverse:{},officialExposure:{}};
+ const dom=fixture('https://fixture.test/popup',html,initial),w=dom.window;
+ try{w.eval(source('popup.js'));await until(()=>w.document.querySelector('#contest').value===week5.contest);
+ const labels=[...w.document.querySelector('#contest').options].map(x=>x.textContent);
+ assert.deepEqual(labels,['CHOOSE TOURNAMENT','ALL TOURNAMENTS',week5.contest]);
+ assert.deepEqual(w.store.knownTournaments,[week5]);
+ }finally{w.observers.forEach(x=>x.disconnect());w.close()}
+});
 test('actual content script clears stale scope on lobby, detects card click and SPA week changes',async()=>{
  const html='<body><nav>NFL</nav><h2>Daily</h2><a id="week5" href="#"><div><span>Battle Royale - Week 5</span><p>6 person drafts - $60k to first!</p><span>$10</span><span>Entry</span><span>$300k</span><span>Prizes</span></div></a><h3>The Wildcat</h3></body>';
  const dom=fixture('https://fixture.test/lobby/nfl/slate',html,{drafts:[{draftId:'old',...week4,players:[{name:'Keenan Allen'},{name:'Hunter Henry'}]}],exposureScope:week4,playerUniverse:{},officialExposure:{allen:{name:'Keenan Allen',count:1,total:1}}}),w=dom.window;
