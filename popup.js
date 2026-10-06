@@ -4,10 +4,15 @@ let activeTab="players",allDrafts=[],officialExposure={};const $=id=>document.ge
 function status(t,s="working"){$("syncText").textContent=t;$("syncStatus").className="sync "+s}
 const cleanContest=s=>String(s??"").replace(/\s+/g," ").trim();
 function validContestName(name){
- const x=cleanContest(name);if(!x||x===Core.NONE||x==="ALL")return false;
- // Draft-room seat/status labels are transient UI text, not tournament names.
+ const x=cleanContest(name);if(!x||x===Core.NONE||x==="ALL"||x.length>100)return false;
+ // Draft-room status / promotional / navigation labels are not tournament names.
  if(/^waiting(?:\s+for)?(?:\s+\d+)?(?:\s+more)?(?:\s+(?:people|person|players?|spots?))?$/i.test(x))return false;
  if(/^(?:filled|draft full|starting soon|on the clock|your turn)$/i.test(x))return false;
+ if(/^\$[\d,.]+\s+drafts?$/i.test(x))return false;
+ if(/^\d+\s+picks?\s+away$/i.test(x))return false;
+ if(/^\d+(?:\.\d+)?%\s+.+\bboost$/i.test(x)||/\bboost$/i.test(x))return false;
+ if(/^(?:active drafts?|add picks?|basic tournament info|daily|slates?|lobby|active|completed|players|drafts|your teams?|your picks|home|rankings|exposure|entry|entries|prizes?|games|entrants|enter|draft now)$/i.test(x))return false;
+ if(/^(?:NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b.*(?:slate|drafts?|picks?)\b/i.test(x))return false;
  return true;
 }
 const validContestChoice=x=>x===Core.NONE||x==="ALL"||validContestName(x);
@@ -31,7 +36,7 @@ const aliases=s=>{const a=tokens(s);if(!a.length)return[];const out=[norm(s),a.a
 const validBuilds=new Set(["1|2|2|1","1|1|3|1","1|1|2|2"]);
 function identityPool(){return Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],playerUniverse,allDrafts,officialExposure)}
 function identityCandidates(raw,pool=identityPool()){return Core.candidates(typeof raw==="string"?{name:raw}:raw,pool)}
-function resolveRoster(players){return (players||[]).map(p=>Core.resolve(p,identityPool()))}
+function resolveRoster(players){return Core.resolveRoster?Core.resolveRoster(players,identityPool(),$("sport")?.value||""):(players||[]).map(p=>Core.resolve(p,identityPool()))}
 function syntheticDraft(d){const id=String(d?.draftId||"");return!id||id.startsWith("dom|")||id.includes("|")||d?.source==="completed-dom"||d?.source==="legacy-dom"}
 function displayDrafts(){return Core.displayDrafts(allDrafts,identityPool())}
 function fullName(raw){return Core.label(Core.resolve(typeof raw==="string"?{name:raw}:raw,identityPool()))}
