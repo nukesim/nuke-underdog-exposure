@@ -39,17 +39,15 @@ try{
  }
 }catch{}
 
-// The Underdog draft room mutates continuously. Extension refreshes are now
-// throttled and deferred until the browser has idle time so drafting clicks win.
+// A live Underdog room can produce a continuous stream of React mutations.
+// Exposure can be a few seconds behind; drafting itself must stay responsive.
 const NativeObserver=globalThis.MutationObserver;
 if(NativeObserver){
  class NukeMutationObserver{
   constructor(callback){
    this._callback=callback;this._pending=[];this._timer=0;this._idle=0;
    this._native=new NativeObserver(records=>{
-    // The content callback only needs to know that meaningful nodes were added.
-    // Cap the batch instead of retaining hundreds/thousands of React mutations.
-    for(const r of records){if(this._pending.length>=24)break;this._pending.push(r)}
+    for(const r of records){if(this._pending.length>=16)break;this._pending.push(r)}
     if(this._timer||this._idle)return;
     this._timer=setTimeout(()=>{
      this._timer=0;
@@ -58,14 +56,14 @@ if(NativeObserver){
       const batch=this._pending.splice(0);
       if(batch.length)this._callback(batch,this);
      };
-     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:2200});
-     else this._timer=setTimeout(run,400);
-    },1800);
+     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:2500});
+     else this._timer=setTimeout(run,500);
+    },3000);
    });
   }
   observe(...args){return this._native.observe(...args)}
   disconnect(){if(this._timer){clearTimeout(this._timer);this._timer=0}if(this._idle&&typeof cancelIdleCallback==='function'){cancelIdleCallback(this._idle);this._idle=0}this._pending.length=0;return this._native.disconnect()}
-  takeRecords(){const a=this._pending.splice(0);const b=this._native.takeRecords();return [...a,...b.slice(0,24)]}
+  takeRecords(){const a=this._pending.splice(0);const b=this._native.takeRecords();return [...a,...b.slice(0,16)]}
  }
  globalThis.MutationObserver=NukeMutationObserver;
 }
@@ -76,15 +74,15 @@ Document.prototype.querySelectorAll=function(selector){
  if(this===document&&selector==='span,div')return [];
  const now=Date.now();
  if(this===document&&selector==='h1,h2,h3,[data-tournament-name]'){
-  if(headingCache&&now-headingAt<1800)return headingCache;
+  if(headingCache&&now-headingAt<2500)return headingCache;
   headingCache=[...nativeDocumentQSA.call(this,selector)].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));headingAt=now;return headingCache;
  }
  if(this===document&&selector==='*'){
-  if(starCache&&now-starAt<3000)return starCache;
+  if(starCache&&now-starAt<5000)return starCache;
   starCache=nativeDocumentQSA.call(this,selector);starAt=now;return starCache;
  }
  if(this===document&&selector==='div'){
-  if(divCache&&now-divAt<2200)return divCache;
+  if(divCache&&now-divAt<4000)return divCache;
   divCache=nativeDocumentQSA.call(this,selector);divAt=now;return divCache;
  }
  return nativeDocumentQSA.call(this,selector);
@@ -97,7 +95,7 @@ Element.prototype.querySelectorAll=function(selector){
   return [...nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]')].filter(el=>validContestName(el.dataset?.tournamentName||el.textContent));
  }
  if(selector==='span,div,p'){
-  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<1600)return old.value;
+  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<3000)return old.value;
   const value=nativeElementQSA.call(this,selector);rowCache.set(this,{at:now,value});return value;
  }
  return nativeElementQSA.call(this,selector);
