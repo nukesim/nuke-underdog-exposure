@@ -39,8 +39,9 @@ try{
  }
 }catch{}
 
-// Underdog mutates the draft DOM constantly. The extension only needs exposure
-// refreshes on a human-readable cadence, not once per individual React mutation.
+// Underdog's React tree can emit hundreds of mutations while a draft room is
+// updating. Batch those into one extension refresh instead of competing with
+// the site for the main thread on every mutation.
 const NativeObserver=globalThis.MutationObserver;
 if(NativeObserver){
  class NukeMutationObserver{
@@ -53,7 +54,7 @@ if(NativeObserver){
      this._timer=0;
      const batch=this._pending.splice(0);
      if(batch.length)this._callback(batch,this);
-    },700);
+    },900);
    });
   }
   observe(...args){return this._native.observe(...args)}
@@ -68,18 +69,36 @@ if(NativeObserver){
 // options such as "$5 Drafts", "3 Picks away", and boost labels. Tournament
 // discovery now relies on headings/data attributes plus structured API data.
 const nativeDocumentQSA=Document.prototype.querySelectorAll;
+let starCache=null,starAt=0,divCache=null,divAt=0;
 Document.prototype.querySelectorAll=function(selector){
  if(this===document&&selector==='span,div')return [];
+ const now=Date.now();
+ // Several exposure helpers ask for the entire DOM during the same render.
+ // Reuse the same static NodeList briefly instead of repeating full-tree scans.
+ if(this===document&&selector==='*'){
+  if(starCache&&now-starAt<650)return starCache;
+  starCache=nativeDocumentQSA.call(this,selector);starAt=now;return starCache;
+ }
+ if(this===document&&selector==='div'){
+  if(divCache&&now-divAt<500)return divCache;
+  divCache=nativeDocumentQSA.call(this,selector);divAt=now;return divCache;
+ }
  return nativeDocumentQSA.call(this,selector);
 };
 
 // The click tracker used the same broad descendant scan on every click. Keep
 // heading/data-attribute discovery, but never walk thousands of generic nodes
-// just because the user clicked a draft button.
+// just because the user clicked a draft button. Also memoize the player-row
+// scan briefly because the same pool is queried several times per render.
 const nativeElementQSA=Element.prototype.querySelectorAll;
+const rowCache=new WeakMap();
 Element.prototype.querySelectorAll=function(selector){
  if(selector==='h1,h2,h3,[data-tournament-name],span,div'){
   return nativeElementQSA.call(this,'h1,h2,h3,[data-tournament-name]');
+ }
+ if(selector==='span,div,p'){
+  const now=Date.now(),old=rowCache.get(this);if(old&&now-old.at<450)return old.value;
+  const value=nativeElementQSA.call(this,selector);rowCache.set(this,{at:now,value});return value;
  }
  return nativeElementQSA.call(this,selector);
 };
