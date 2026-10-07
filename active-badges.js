@@ -155,7 +155,10 @@ function render(){
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
   playerRoot=null;return;
  }
- renderBadges();renderCombo();
+ // Ownership behavior is intentionally unchanged. Once the dedicated combo
+ // dock is loaded, do not waste cycles rendering a second hidden combo panel.
+ renderBadges();
+ if(!globalThis.__NUKE_COMBO_DOCK_V2__)renderCombo();
 }
 
 async function tick(){
