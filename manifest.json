@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NUKE Underdog Exposure",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "description": "Fast live Underdog exposure by sport, tournament, or overall.",
   "permissions": [
     "storage",
@@ -45,7 +45,8 @@
         "player-catalog.js",
         "exposure-core.js",
         "perf-guard.js",
-        "content.js"
+        "content.js",
+        "active-badges.js"
       ],
       "css": [
         "overlay.css"
