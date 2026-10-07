@@ -9,7 +9,7 @@ const norm=Core.norm||((s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' 
 const NONE=Core.NONE||'__NO_TOURNAMENT__';
 let model={total:0,counts:new Map(),pairs:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
 let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0,rosterRootCache=null;
-let stackTeams=new Set(),draftedQB=false,lastStackScan=0;
+let stackTeams=new Set(),draftedQB=false,draftedQBTeam='',lastStackScan=0;
 
 document.documentElement.classList.add('nuke-stable-mode');
 
@@ -134,18 +134,18 @@ function rosterRoot(){
 function refreshStackTargets(force=false){
  const now=Date.now();if(!force&&now-lastStackScan<500)return;
  lastStackScan=now;
- const root=rosterRoot(),teams=new Set();let hasQB=false;
+ const root=rosterRoot(),teams=new Set();let hasQB=false,qbTeam='';
  if(root){
   const map=catalogMetaMap();
   for(const el of root.getElementsByTagName('*')){
    if(!visible(el)||el.children.length)continue;
    const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),p=map.get(norm(raw));if(!p)continue;
    const pos=String(p.pos||p.position||'').toUpperCase(),team=String(p.teamAbbr||p.team||'').toUpperCase();
-   if(pos==='QB')hasQB=true;
+   if(pos==='QB'){hasQB=true;if(team)qbTeam=team}
    else if((pos==='WR'||pos==='TE')&&team)teams.add(team);
   }
  }
- stackTeams=teams;draftedQB=hasQB;
+ stackTeams=teams;draftedQB=hasQB;draftedQBTeam=qbTeam;
 }
 function playerRowFor(el,root){
  const rr=root.getBoundingClientRect();let p=el.parentElement;
@@ -155,9 +155,14 @@ function playerRowFor(el,root){
  }
  return null;
 }
-function clearReverseStack(root){
- root.querySelectorAll('[data-nuke-reverse-stack-row]').forEach(row=>{row.classList.remove('nuke-stack-row');delete row.dataset.nukeReverseStackRow});
- root.querySelectorAll('[data-nuke-reverse-stack-name]').forEach(el=>{el.classList.remove('nuke-qb-stack');delete el.dataset.nukeReverseStackName;if(el.title?.startsWith('STACK QB · '))el.removeAttribute('title')});
+function clearStackHighlights(root){
+ root.querySelectorAll('[data-nuke-reverse-stack-row],[data-nuke-forward-stack-row]').forEach(row=>{
+  row.classList.remove('nuke-stack-row');delete row.dataset.nukeReverseStackRow;delete row.dataset.nukeForwardStackRow;
+ });
+ root.querySelectorAll('[data-nuke-reverse-stack-name],[data-nuke-forward-stack-name]').forEach(el=>{
+  el.classList.remove('nuke-qb-stack');delete el.dataset.nukeReverseStackName;delete el.dataset.nukeForwardStackName;
+  if(el.title?.startsWith('STACK QB · ')||el.title?.startsWith('QB STACK · '))el.removeAttribute('title');
+ });
 }
 
 function badgeText(name){
@@ -171,7 +176,7 @@ function renderBadges(){
  const root=findPlayerRoot();if(!root)return;
  refreshStackTargets();
  const metas=catalogMetaMap(),names=catalogNameMap();
- clearReverseStack(root);
+ clearStackHighlights(root);
  for(const old of root.querySelectorAll('.nuke-active-own')){
   const prev=old.previousElementSibling,raw=(prev?.textContent||'').replace(/\s+/g,' ').trim();
   if(!prev||!names.has(norm(raw)))old.remove();
@@ -195,6 +200,17 @@ function renderBadges(){
    if(pos==='QB'&&team&&stackTeams.has(team)){
     el.classList.add('nuke-qb-stack');el.dataset.nukeReverseStackName='1';el.title=`STACK QB · ${team}`;
     const row=playerRowFor(el,root);if(row){row.classList.add('nuke-stack-row');row.dataset.nukeReverseStackRow='1'}
+   }
+  }
+
+  // Forward stack: once a QB is drafted, highlight every AVAILABLE RB/WR/TE
+  // from that QB's team with the same green stack treatment. Everything else
+  // in the ownership, combo and dupe-path systems remains unchanged.
+  if(draftedQB&&draftedQBTeam&&meta){
+   const pos=String(meta.pos||meta.position||'').toUpperCase(),team=String(meta.teamAbbr||meta.team||'').toUpperCase();
+   if((pos==='RB'||pos==='WR'||pos==='TE')&&team===draftedQBTeam){
+    el.classList.add('nuke-qb-stack');el.dataset.nukeForwardStackName='1';el.title=`QB STACK · ${team}`;
+    const row=playerRowFor(el,root);if(row){row.classList.add('nuke-stack-row');row.dataset.nukeForwardStackRow='1'}
    }
   }
  }
@@ -222,7 +238,7 @@ function render(){
  if(!isDraftPage()){
   document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
-  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedQB=false;return;
+  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedQB=false;draftedQBTeam='';return;
  }
  // Ownership behavior is intentionally unchanged. Once the dedicated combo
  // dock is loaded, do not waste cycles rendering a second hidden combo panel.
