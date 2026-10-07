@@ -8,7 +8,8 @@ if(!Core)return;
 const norm=Core.norm||((s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' '));
 const NONE=Core.NONE||'__NO_TOURNAMENT__';
 let model={total:0,counts:new Map(),pairs:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
-let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0;
+let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0,rosterRootCache=null;
+let stackTeams=new Set(),draftedQB=false,lastStackScan=0;
 
 document.documentElement.classList.add('nuke-stable-mode');
 
@@ -97,11 +98,66 @@ function findQueueHost(){
  return null;
 }
 
+function catalogMetaMap(){
+ const map=new Map();
+ for(const p of model.pool){const k=norm(p.name);if(k)map.set(k,p)}
+ for(const p of globalThis.NUKE_PLAYER_CATALOG||[]){const k=norm(p.name);if(k&&!map.has(k))map.set(k,p)}
+ return map;
+}
 function catalogNameMap(){
  const map=new Map();
- for(const p of model.pool){const k=norm(p.name);if(k)map.set(k,p.name)}
- for(const p of globalThis.NUKE_PLAYER_CATALOG||[]){const k=norm(p.name);if(k&&!map.has(k))map.set(k,p.name)}
+ for(const [k,p] of catalogMetaMap())map.set(k,p.name);
  return map;
+}
+
+function rosterRoot(){
+ if(visible(rosterRootCache))return rosterRootCache;
+ rosterRootCache=null;
+ try{
+  const snap=document.evaluate("//*[normalize-space(text())='Pick position']",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+  let best=null,bestScore=-Infinity;
+  for(let i=0;i<snap.snapshotLength;i++){
+   const label=snap.snapshotItem(i);if(!visible(label))continue;
+   const lr=label.getBoundingClientRect(),lc=lr.left+lr.width/2;if(lc<innerWidth*.68)continue;
+   let p=label.parentElement;
+   for(let depth=0;depth<10&&p&&p!==document.body;depth++,p=p.parentElement){
+    const r=p.getBoundingClientRect();
+    if(r.width<240||r.width>680||r.height<170||r.height>900||r.left<innerWidth*.60)continue;
+    const text=(p.innerText||'').replace(/\s+/g,' ').trim();
+    const score=r.height+(/\bQB\b/.test(text)?80:0)+(/\bRB\b/.test(text)?80:0)+(/\bWR\b/.test(text)?80:0)+(/\bTE\b/.test(text)?80:0);
+    if(score>bestScore){best=p;bestScore=score}
+   }
+  }
+  rosterRootCache=best;return best;
+ }catch{return null}
+}
+function refreshStackTargets(force=false){
+ const now=Date.now();if(!force&&now-lastStackScan<500)return;
+ lastStackScan=now;
+ const root=rosterRoot(),teams=new Set();let hasQB=false;
+ if(root){
+  const map=catalogMetaMap();
+  for(const el of root.getElementsByTagName('*')){
+   if(!visible(el)||el.children.length)continue;
+   const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),p=map.get(norm(raw));if(!p)continue;
+   const pos=String(p.pos||p.position||'').toUpperCase(),team=String(p.teamAbbr||p.team||'').toUpperCase();
+   if(pos==='QB')hasQB=true;
+   else if((pos==='WR'||pos==='TE')&&team)teams.add(team);
+  }
+ }
+ stackTeams=teams;draftedQB=hasQB;
+}
+function playerRowFor(el,root){
+ const rr=root.getBoundingClientRect();let p=el.parentElement;
+ for(let depth=0;depth<7&&p&&p!==root;depth++,p=p.parentElement){
+  const r=p.getBoundingClientRect();
+  if(r.width>=rr.width*.72&&r.height>=42&&r.height<=110)return p;
+ }
+ return null;
+}
+function clearReverseStack(root){
+ root.querySelectorAll('[data-nuke-reverse-stack-row]').forEach(row=>{row.classList.remove('nuke-stack-row');delete row.dataset.nukeReverseStackRow});
+ root.querySelectorAll('[data-nuke-reverse-stack-name]').forEach(el=>{el.classList.remove('nuke-qb-stack');delete el.dataset.nukeReverseStackName;if(el.title?.startsWith('STACK QB · '))el.removeAttribute('title')});
 }
 
 function badgeText(name){
@@ -113,14 +169,16 @@ function colorFor(count,total){if(!total||count===0)return '#94a3b8';const pct=c
 function renderBadges(){
  if(!isDraftPage()||!model.total)return;
  const root=findPlayerRoot();if(!root)return;
- const names=catalogNameMap();
+ refreshStackTargets();
+ const metas=catalogMetaMap(),names=catalogNameMap();
+ clearReverseStack(root);
  for(const old of root.querySelectorAll('.nuke-active-own')){
   const prev=old.previousElementSibling,raw=(prev?.textContent||'').replace(/\s+/g,' ').trim();
   if(!prev||!names.has(norm(raw)))old.remove();
  }
  for(const el of root.querySelectorAll('span,p,div')){
   if(el.classList?.contains('nuke-active-own')||el.childElementCount||!visible(el))continue;
-  const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),full=names.get(norm(raw));if(!full)continue;
+  const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),key=norm(raw),meta=metas.get(key),full=names.get(key);if(!full)continue;
   let b=el.nextElementSibling;
   if(!b?.classList?.contains('nuke-active-own')){
    b=document.createElement('span');b.className='nuke-active-own';b.dataset.nukeActiveOwn='1';el.insertAdjacentElement('afterend',b);
@@ -128,6 +186,17 @@ function renderBadges(){
   const count=model.counts.get(norm(full))||0,text=badgeText(full);if(b.textContent!==text)b.textContent=text;
   b.title=`NUKE exposure · ${model.scope.sport} · ${model.scope.contest}`;
   b.style.color=colorFor(count,model.total);
+
+  // Reverse stack: after drafting a WR/TE, make that team's AVAILABLE QB
+  // impossible to miss. This uses the existing green stack treatment and does
+  // not change exposure, combo, dupe-path, queue, or draft-board behavior.
+  if(!draftedQB&&meta){
+   const pos=String(meta.pos||meta.position||'').toUpperCase(),team=String(meta.teamAbbr||meta.team||'').toUpperCase();
+   if(pos==='QB'&&team&&stackTeams.has(team)){
+    el.classList.add('nuke-qb-stack');el.dataset.nukeReverseStackName='1';el.title=`STACK QB · ${team}`;
+    const row=playerRowFor(el,root);if(row){row.classList.add('nuke-stack-row');row.dataset.nukeReverseStackRow='1'}
+   }
+  }
  }
 }
 
@@ -153,17 +222,17 @@ function render(){
  if(!isDraftPage()){
   document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
-  playerRoot=null;return;
+  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedQB=false;return;
  }
  // Ownership behavior is intentionally unchanged. Once the dedicated combo
  // dock is loaded, do not waste cycles rendering a second hidden combo panel.
  renderBadges();
- if(!globalThis.__NUKE_COMBO_DOCK_V2__)renderCombo();
+ if(!globalThis.__NUKE_COMBO_DOCK_V2__&&!globalThis.__NUKE_COMBO_DOCK_V3__)renderCombo();
 }
 
 async function tick(){
  if(tickBusy)return;tickBusy=true;
- try{if(location.href!==lastUrl){lastUrl=location.href;playerRoot=null;await refreshData()}render()}finally{tickBusy=false}
+ try{if(location.href!==lastUrl){lastUrl=location.href;playerRoot=null;rosterRootCache=null;lastStackScan=0;await refreshData()}render()}finally{tickBusy=false}
 }
 function fastRender(){if(scrollRaf)return;scrollRaf=requestAnimationFrame(()=>{scrollRaf=0;render()})}
 
