@@ -51,7 +51,7 @@ function buildModel(data){
   for(const name of names){const key=norm(name);if(key)counts.set(key,(counts.get(key)||0)+1)}
   const sorted=names.slice().sort((a,b)=>a.localeCompare(b));
   for(let i=0;i<sorted.length;i++)for(let j=i+1;j<sorted.length;j++){
-   const key=sorted[i]+' + '+sorted[j];pairs.set(key,(pairs.get(key)||0)+1);
+   const key=sorted[i]+' + '+sorted[j];pairs.set(key,(pairs.get(key)||0)+1;
   }
  }
  model={total:resolved.length,counts,pairs,scope,pool};
@@ -83,16 +83,28 @@ function findPlayerRoot(){
 
 function findQueueHost(){
  try{
-  const snap=document.evaluate("//*[normalize-space(text())='Queue']",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+  const players=findPlayerRoot();
+  const snap=document.evaluate("//*[starts-with(normalize-space(text()),'Queue')]",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+  const candidates=[];
   for(let i=0;i<snap.snapshotLength;i++){
-   const label=snap.snapshotItem(i);if(!visible(label))continue;
-   let p=label.parentElement,best=null;
+   const label=snap.snapshotItem(i);if(!visible(label)||players?.contains(label))continue;
+   const lr=label.getBoundingClientRect(),cx=lr.left+lr.width/2;
+   // The real Queue lives in the center column. Player-detail 'Queue' buttons
+   // live inside the left player pane and must never be used as the anchor.
+   if(cx<innerWidth*.34||cx>innerWidth*.76)continue;
+   let p=label.parentElement;
    for(let depth=0;depth<7&&p&&p!==document.body;depth++,p=p.parentElement){
     const r=p.getBoundingClientRect();
-    if(r.width>300&&r.width<900&&r.height>35){best=p;if(r.height>140)break}
+    if(r.width<300||r.width>900||r.height<45||r.height>650)continue;
+    const pcx=r.left+r.width/2;if(pcx<innerWidth*.34||pcx>innerWidth*.76)continue;
+    const text=(p.innerText||'').replace(/\s+/g,' ').trim();
+    const queueLike=/Use the star button|Queued players|Queue\s*\d*/i.test(text);
+    const score=Math.abs(pcx-innerWidth*.58)+(queueLike?-250:0)+Math.abs(Math.min(r.height,180)-180)*.15;
+    candidates.push({p,score});
    }
-   if(best)return best;
   }
+  candidates.sort((a,b)=>a.score-b.score);
+  return candidates[0]?.p||null;
  }catch{}
  return null;
 }
@@ -136,17 +148,28 @@ function stableComboPanel(){
  if(!panel){panel=document.createElement('section');panel.id='nuke-stable-combo-panel';document.body.appendChild(panel)}
  return panel;
 }
+function positionComboBelowQueue(panel,host){
+ const r=host.getBoundingClientRect(),gap=10,edge=8,top=r.bottom+gap;
+ const available=Math.floor(innerHeight-edge-top);
+ // Never cover Queue, queued players, the player detail drawer, or draft board.
+ // If there is temporarily no room below Queue, hide until the layout has room.
+ if(available<74){panel.hidden=true;return false}
+ panel.style.left=Math.round(r.left)+'px';
+ panel.style.width=Math.round(r.width)+'px';
+ panel.style.top=Math.round(top)+'px';
+ panel.style.maxHeight=Math.min(222,available)+'px';
+ return true;
+}
 function renderCombo(){
  const panel=stableComboPanel();
  if(!isDraftPage()||!model.total){panel.hidden=true;return}
- const host=findQueueHost();if(!host){return}
+ const host=findQueueHost();if(!host){panel.hidden=true;return}
  const r=host.getBoundingClientRect();if(r.width<250||r.bottom<0||r.top>innerHeight){panel.hidden=true;return}
- panel.hidden=false;panel.style.left=Math.round(r.left)+'px';panel.style.width=Math.round(r.width)+'px';panel.style.top=Math.round(r.top+30)+'px';
  const top=[...model.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,8);
  const frag=document.createDocumentFragment(),head=document.createElement('div');head.className='nuke-stable-combo-head';
  const title=document.createElement('b');title.textContent='NUKE · TOP COMBOS';const total=document.createElement('span');total.textContent=model.total+' drafts';head.append(title,total);frag.append(head);
  for(const [name,count] of top){const row=document.createElement('div');row.className='nuke-stable-combo-row';const n=document.createElement('span'),v=document.createElement('b');n.textContent=name;v.textContent=`${count}/${model.total} · ${Math.round(count/model.total*100)}%`;row.append(n,v);frag.append(row)}
- panel.replaceChildren(frag);
+ panel.replaceChildren(frag);panel.hidden=false;positionComboBelowQueue(panel,host);
 }
 
 function render(){
