@@ -35,29 +35,29 @@ try{
  if(area){const nativeGet=area.get.bind(area),nativeSet=area.set.bind(area);area.get=async(...args)=>sanitizeValues(await nativeGet(...args));area.set=(values,...args)=>nativeSet(sanitizeValues(values),...args)}
 }catch{}
 
-// React can mutate hundreds of nodes during a pick. In a live draft, NUKE gets
-// one low-priority refresh at most every ~6 seconds instead of competing with
-// clicks, search, scrolling and the pick timer.
+// The live draft now has dedicated lightweight ownership + combo renderers.
+// Do not run the old whole-page mutation renderer at all while drafting; that
+// renderer was the main source of delayed clicks and 6-10 second repopulation.
 const NativeObserver=globalThis.MutationObserver;
 if(NativeObserver){
  class NukeMutationObserver{
   constructor(callback){
    this._callback=callback;this._pending=[];this._timer=0;this._idle=0;
    this._native=new NativeObserver(records=>{
-    const cap=liveRoom()?4:16;for(const r of records){if(this._pending.length>=cap)break;this._pending.push(r)}
+    if(liveRoom())return;
+    const cap=16;for(const r of records){if(this._pending.length>=cap)break;this._pending.push(r)}
     if(this._timer||this._idle)return;
-    const wait=liveRoom()?6000:1200;
     this._timer=setTimeout(()=>{
      this._timer=0;
      const run=()=>{this._idle=0;const batch=this._pending.splice(0);if(batch.length)this._callback(batch,this)};
-     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:liveRoom()?3500:1500});
-     else this._timer=setTimeout(run,liveRoom()?750:250);
-    },wait);
+     if(typeof requestIdleCallback==='function')this._idle=requestIdleCallback(run,{timeout:1500});
+     else this._timer=setTimeout(run,250);
+    },1200);
    });
   }
   observe(...args){return this._native.observe(...args)}
   disconnect(){if(this._timer){clearTimeout(this._timer);this._timer=0}if(this._idle&&typeof cancelIdleCallback==='function'){cancelIdleCallback(this._idle);this._idle=0}this._pending.length=0;return this._native.disconnect()}
-  takeRecords(){const cap=liveRoom()?4:16,a=this._pending.splice(0),b=this._native.takeRecords();return [...a,...b.slice(0,cap)]}
+  takeRecords(){if(liveRoom())return[];const a=this._pending.splice(0),b=this._native.takeRecords();return [...a,...b.slice(0,16)]}
  }
  globalThis.MutationObserver=NukeMutationObserver;
 }
