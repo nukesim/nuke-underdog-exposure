@@ -86,7 +86,6 @@ function rosterPickNames(pool){
  }
  return out;
 }
-function fingerprint(contest,names){return JSON.stringify([clean(contest),...names.map(norm).sort()])}
 async function captureIfComplete(forceFallback=false){
  if(captureBusy||!isDraftPage())return;
  const routeId=location.pathname.match(/\/draft\/([^/?#]+)/i)?.[1]||'';
@@ -110,13 +109,11 @@ async function captureIfComplete(forceFallback=false){
    const p=Core.resolve({name,sport:scope.sport},pool);
    return {name:p.name||name,pos:String(p.pos||'').toUpperCase(),team:String(p.teamAbbr||p.team||'').toUpperCase(),sport:scope.sport};
   });
-  const fp=fingerprint(scope.contest,players.map(p=>p.name));
   const drafts=[...(data.drafts||[])];
   const exact=drafts.findIndex(d=>String(d.draftId||'')===routeId);
-  const same=drafts.findIndex(d=>d.contest===scope.contest&&Array.isArray(d.players)&&fingerprint(d.contest,d.players.map(p=>p.name))===fp);
   const draft={draftId:routeId,sport:scope.sport,format:'Daily Draft',contest:scope.contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'live-auto'};
   if(exact>=0)drafts[exact]={...drafts[exact],...draft};
-  else if(same<0)drafts.push(draft);
+  else drafts.push(draft);
   await chrome.storage.local.set({drafts,exposureScope:scope,lastAutoCapturedDraft:{draftId:routeId,contest:scope.contest,capturedAt:draft.capturedAt}});
  }catch{lastCapturedId=''}finally{captureBusy=false}
 }
