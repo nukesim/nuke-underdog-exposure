@@ -57,7 +57,16 @@ async function ingestStructured(data,kind='',url='',pageUrl=location.href){
  const found=harvestStructured(data);
  if(found.length){
   const current=(await safe(()=>chrome.storage.local.get({drafts:[]})))?.drafts||[];const byId=new Map(current.map(d=>[d.draftId,d]));
-  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];await safe(()=>chrome.storage.local.set({drafts}));cached.drafts=drafts;computeStats();
+  for(const d of found)byId.set(d.draftId,d);const drafts=[...byId.values()];
+  const write={drafts};
+  // Fresh installs commonly rebuild from Completed. If the payload is for one
+  // tournament, select it automatically so the popup/live badges do not require
+  // a second manual tournament click just to use the newly captured history.
+  if(isCompletedPage()){
+   const scopes=[...new Map(found.map(d=>[Core.scopeKey({sport:d.sport||'UNKNOWN',contest:d.contest}),{sport:d.sport||'UNKNOWN',contest:d.contest}])).values()];
+   if(scopes.length===1){write.exposureScope=scopes[0];write.activePageScope=scopes[0];activePageScope=scopes[0];cached.sport=scopes[0].sport;cached.selected=scopes[0].contest}
+  }
+  await safe(()=>chrome.storage.local.set(write));cached.drafts=drafts;computeStats();
  }
  if(/exposure/i.test(String(url||''))&&location.pathname.includes('/exposure/')&&pageUrl===location.href&&activePageScope?.contest!==Core.NONE&&activePageScope){
   const hits=harvestOfficialExposureStructured(data);
