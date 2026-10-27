@@ -4,8 +4,8 @@ const Core=require('../exposure-core');
 require('../player-catalog');
 const pool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG);
 const scope4={sport:'NFL',contest:'Battle Royale - Week 4'},scope5={sport:'NFL',contest:'Battle Royale - Week 5'};
-test('all 545 CSV identities resolve by stable and appearance IDs',()=>{
- assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,545);
+test('all 530 current-week CSV identities resolve by stable and appearance IDs',()=>{
+ assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,530);
  for(const p of globalThis.NUKE_PLAYER_CATALOG)for(const id of p.ids)assert.equal(Core.resolve({id,name:p.name.split(' ').at(-1)},pool).name,p.name);
 });
 test('structured API joins snake_case and camelCase names',()=>{
@@ -37,6 +37,14 @@ test('Week 5 completed six-player rosters resolve ambiguous surname cards from r
  assert.deepEqual(ds[0].players.map(p=>p.name),['Amon-Ra St. Brown','Christian McCaffrey','Ashton Jeanty','Justin Jefferson','Tyler Shough','Juwan Johnson']);
  assert.deepEqual(ds[1].players.map(p=>p.name),['Amon-Ra St. Brown','Brock Bowers',"Ja'Marr Chase",'Jeremiyah Love',"D'Andre Swift",'Jayden Daniels']);
  assert.ok(ds.flatMap(d=>d.players).every(p=>!p.unresolved));
+});
+test('current-week surname cards resolve Pickens and roster-constrained Henry',()=>{
+ assert.equal(Core.resolve({name:'Pickens',sport:'NFL'},pool).name,'George Pickens');
+ assert.equal(Core.resolve({name:'Walker III',sport:'NFL'},pool).name,'Kenneth Walker III');
+ const roster=['Brady Cook','Lucky Jackson','Amon-Ra St. Brown','Brock Bowers','Henry','Walker III'].map(name=>({name,sport:'NFL'}));
+ const resolved=Core.resolveRoster(roster,pool,'NFL');
+ assert.deepEqual(resolved.map(p=>p.name),['Brady Cook','Lucky Jackson','Amon-Ra St. Brown','Brock Bowers','Derrick Henry','Kenneth Walker III']);
+ assert.ok(resolved.every(p=>!p.unresolved));
 });
 test('legacy exposure and same-denominator other tournament never override',()=>{
  const old={name:'Keenan Allen',count:20,total:127};
