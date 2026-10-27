@@ -118,9 +118,14 @@ async function captureIfComplete(forceFallback=false){
  }catch{lastCapturedId=''}finally{captureBusy=false}
 }
 
-function tick(){decorateDuplicatePath();captureIfComplete(false)}
-document.addEventListener('click',()=>{decorateDuplicatePath();setTimeout(()=>captureIfComplete(false),180);setTimeout(()=>captureIfComplete(false),650)},true);
+function tick(){if(document.hidden||!isDraftPage())return;decorateDuplicatePath();captureIfComplete(false)}
+document.addEventListener('click',()=>{
+ decorateDuplicatePath();
+ setTimeout(()=>captureIfComplete(false),300);
+ setTimeout(()=>captureIfComplete(false),1000);
+},true);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){decorateDuplicatePath();captureIfComplete(true)}});
-setInterval(tick,700);
+// Safety fallback only; normal updates are driven by the user's clicks/storage.
+setInterval(tick,5000);
 tick();
 })();
