@@ -235,9 +235,9 @@ function detectSport(){
  for(const [s,re] of rules)if(re.test(text))return s;return 'UNKNOWN';
 }
 async function captureCompleted(){
- if(!isCompletedPage())return;
- const rosters=rosterStrings(); if(!rosters.length)return;
- const contest=detectCompletedContest(); if(!contest)return; const sport=detectSport();
+ if(!isCompletedPage())return {ok:false,reason:'not_completed'};
+ const rosters=rosterStrings(); if(!rosters.length)return {ok:false,reason:'no_rosters'};
+ const contest=detectCompletedContest(); if(!contest)return {ok:false,reason:'no_contest'}; const sport=detectSport();
  const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
  const current=stored?.drafts||[],universe=stored?.playerUniverse||cached.playerUniverse||{},official=stored?.officialExposure||cached.officialExposure||{};
  const stableFullNames=new Map();
@@ -262,8 +262,9 @@ async function captureCompleted(){
   drafts.push({draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'completed-dom'});
   existingFingerprints.set(fingerprint,drafts.length-1);
  }
- await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest}}));
- cached.drafts=drafts;computeStats();
+ await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest},activePageScope:{sport,contest},lastCompletedSync:{contest,sport,rosters:rosters.length,at:Date.now()}}));
+ cached.drafts=drafts;activePageScope={sport,contest};cached.sport=sport;cached.selected=contest;computeStats();
+ return {ok:true,contest,sport,rosters:rosters.length,total:drafts.filter(d=>d.contest===contest&&String(d.sport||'').toUpperCase()===String(sport).toUpperCase()).length};
 }
 function playerPoolRoot(){
  const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Players$/i.test(clean(el.textContent))&&el.offsetParent!==null);
@@ -662,7 +663,9 @@ function syncCompletedNow(){
 }
 function completedSyncBurst(){
  const id=++completedBurstSeq;
- for(const ms of [180,700,1600,3200])setTimeout(()=>{if(id===completedBurstSeq&&isCompletedPage())syncCompletedNow()},ms);
+ // Completed is not latency-sensitive. Retry across Underdog's SPA render
+ // window so clicking Completed reliably rebuilds exposure after a fresh install.
+ for(const ms of [120,500,1200,2500,4500,7000])setTimeout(()=>{if(id===completedBurstSeq&&isCompletedPage())syncCompletedNow()},ms);
 }
 document.addEventListener('click',e=>{
  const node=e.target?.closest?.('a,button,[role="tab"],[role="button"],div,span')||e.target;
@@ -686,7 +689,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
  if(msg?.type==='NUKE_FORCE_SCAN'){
-  (async()=>{await hydrate();const scope=syncNavigation();await captureCompleted();await captureOfficialExposure();send({ok:true,total:cached.drafts.length,scope})})();
+  (async()=>{await hydrate();const scope=syncNavigation();const completed=await captureCompleted();await captureOfficialExposure();send({ok:true,total:cached.drafts.length,scope,completed})})();
   return true;
  }
 });
