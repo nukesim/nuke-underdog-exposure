@@ -238,7 +238,9 @@ async function sync(forceData=false){
 }
 function burst(forceData=false){
  const id=++burstId;sync(forceData);
- for(const ms of [40,120,260,520])setTimeout(()=>{if(id===burstId)sync(false)},ms);
+ // Two delayed passes are enough for Underdog's React update without doing
+ // five full DOM/model passes for every ordinary click.
+ for(const ms of [220,700])setTimeout(()=>{if(id===burstId)sync(false)},ms);
 }
 
 document.addEventListener('click',()=>burst(false),true);
@@ -247,5 +249,5 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)burst(true
 chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&(changes.drafts||changes.exposureScope||changes.activePageScope||changes.playerUniverse||changes.officialExposure)){lastDataAt=0;burst(true)}});
 
 sync(true);
-setInterval(()=>sync(false),900);
+setInterval(()=>{if(!document.hidden)sync(false)},3000);
 })();
