@@ -4,7 +4,11 @@ const recent=new Map();
 // fetch/XHR traffic. Structured interception is limited to completed/exposure
 // pages where a small delay cannot affect a pick clock or user clicks.
 const liveRoom=()=>/\/draft\//i.test(location.pathname);
-const relevant=u=>!liveRoom()&&/completed|exposure/i.test(String(u||''));
+const completedPage=()=>/\/completed(?:\/|$)/i.test(location.pathname);
+// On Completed, Underdog's API endpoint names are not consistently labeled
+// "completed". Mirror JSON from that page so content.js can harvest the actual
+// draft IDs, tournament names and rosters automatically. Never do this in /draft/.
+const relevant=u=>!liveRoom()&&(completedPage()||/completed|exposure/i.test(String(u||'')));
 const allow=u=>{const k=String(u||'').split('?')[0],now=Date.now(),last=recent.get(k)||0;if(now-last<3000)return false;recent.set(k,now);if(recent.size>30)for(const [key,t]of recent)if(now-t>30000)recent.delete(key);return true};
 const send=(kind,url,data,pageUrl)=>{try{if(relevant(url)&&allow(url))window.postMessage({source:'NUKE_UD_BRIDGE',kind,url,data,pageUrl},'*')}catch{}};
 const originalFetch=window.fetch;
