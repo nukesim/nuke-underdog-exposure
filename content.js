@@ -11,6 +11,7 @@ const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -
 const tokens=s=>norm(s).split(' ').filter(Boolean);
 const aliasKeys=s=>{const a=tokens(s);if(!a.length)return [];const out=[norm(s)];if(a.length>1)out.push(a.slice(-2).join(' '));out.push(a.at(-1));if(/^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1){out.push(a.slice(-2).join(' '));out.push(a.at(-2))}return [...new Set(out)]};
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
+const isCompletedPage=()=>/\/completed(?:\/|$)/i.test(location.pathname);
 
 function harvestStructured(root){
  const found=[];const seen=new WeakSet();
@@ -149,7 +150,7 @@ function syncActiveScope(force=false){
  const names=visibleTournamentNames();let scope=null;
  const routeId=location.pathname.split('/').filter(Boolean).at(-1);
  if(routeScopes.has(routeId))scope=routeScopes.get(routeId);
- if(location.pathname.includes('/completed/')){const contest=detectCompletedContest();if(contest)scope={sport:pageSport(),contest}}
+ if(isCompletedPage()){const contest=detectCompletedContest();if(contest)scope={sport:pageSport(),contest}}
  else if(/\/(draft|tournament|contest|exposure)\//.test(location.pathname)&&names.length===1)scope=names[0];
  // During SPA navigation the old heading can survive for one frame.
  if(changed&&!routeScopes.has(routeId)&&Core.sameScope(scope,activePageScope))scope=null;
@@ -225,7 +226,7 @@ function detectSport(){
  for(const [s,re] of rules)if(re.test(text))return s;return 'UNKNOWN';
 }
 async function captureCompleted(){
- if(!location.pathname.includes('/completed/'))return;
+ if(!isCompletedPage())return;
  const rosters=rosterStrings(); if(!rosters.length)return;
  const contest=detectCompletedContest(); if(!contest)return; const sport=detectSport();
  const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
@@ -640,8 +641,24 @@ function renderComboPanel(){
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
 function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{if(scopeReady)syncNavigation();renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
-const obs=new MutationObserver(m=>{if(scopeReady)syncNavigation();if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(location.pathname.includes('/completed/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
+const obs=new MutationObserver(m=>{if(scopeReady)syncNavigation();if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(isCompletedPage()){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
+
+let completedBurstSeq=0;
+function syncCompletedNow(){
+ if(!isCompletedPage()||!alive)return;
+ // Structured API ingestion happens independently through page-bridge. These
+ // DOM passes reconcile any roster cards already rendered by the SPA.
+ captureCompleted();
+}
+function completedSyncBurst(){
+ const id=++completedBurstSeq;
+ for(const ms of [180,700,1600,3200])setTimeout(()=>{if(id===completedBurstSeq&&isCompletedPage())syncCompletedNow()},ms);
+}
+document.addEventListener('click',e=>{
+ const node=e.target?.closest?.('a,button,[role="tab"],[role="button"],div,span')||e.target;
+ if(/^Completed$/i.test(clean(node?.textContent)))completedSyncBurst();
+},true);
 
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
@@ -666,7 +683,11 @@ chrome.runtime.onMessage.addListener((msg,sender,send)=>{
 });
 // One lightweight route check only. Older builds accidentally created another
 // permanent 500ms interval every time the popup requested a scan.
-setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},2000);
+setInterval(()=>{
+ if(!alive||!scopeReady||location.href===lastRoute)return;
+ const was=lastRoute;syncNavigation();
+ if(isCompletedPage()&&location.href!==was)completedSyncBurst();
+},2000);
 window.addEventListener('popstate',()=>{if(scopeReady)syncNavigation()});
-(async()=>{await hydrate();await captureCompleted();await captureOfficialExposure();scheduleRender(0)})();
+(async()=>{await hydrate();await captureCompleted();await captureOfficialExposure();if(isCompletedPage())completedSyncBurst();scheduleRender(0)})();
 })();
