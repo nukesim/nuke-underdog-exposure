@@ -251,8 +251,14 @@ async function tick(){
  try{if(location.href!==lastUrl){lastUrl=location.href;playerRoot=null;rosterRootCache=null;lastStackScan=0;await refreshData()}render()}finally{tickBusy=false}
 }
 function fastRender(){if(scrollRaf)return;scrollRaf=requestAnimationFrame(()=>{scrollRaf=0;render()})}
+let clickTimer=0;
+function clickRender(){
+ clearTimeout(clickTimer);
+ clickTimer=setTimeout(()=>{lastStackScan=0;render()},220);
+}
 
 document.addEventListener('scroll',fastRender,{capture:true,passive:true});
+document.addEventListener('click',clickRender,true);
 window.addEventListener('resize',fastRender,{passive:true});
 chrome.storage.onChanged.addListener((changes,area)=>{
  if(area!=='local')return;
@@ -260,5 +266,5 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 });
 
 refreshData().then(render);
-setInterval(tick,700);
+setInterval(tick,3000);
 })();
