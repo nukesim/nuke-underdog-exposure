@@ -659,11 +659,14 @@ chrome.storage.onChanged.addListener((changes,area)=>{
  if(affectsExposure){computeStats();scheduleRender(0)}
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
- if(msg?.type==='NUKE_FORCE_SCAN'){setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},500);
-window.addEventListener('popstate',()=>{if(scopeReady)syncNavigation()});
-(async()=>{await hydrate();const scope=syncNavigation();await captureCompleted();send({ok:true,total:cached.drafts.length,scope})})();return true}
+ if(msg?.type==='NUKE_FORCE_SCAN'){
+  (async()=>{await hydrate();const scope=syncNavigation();await captureCompleted();await captureOfficialExposure();send({ok:true,total:cached.drafts.length,scope})})();
+  return true;
+ }
 });
-setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},500);
+// One lightweight route check only. Older builds accidentally created another
+// permanent 500ms interval every time the popup requested a scan.
+setInterval(()=>{if(alive&&scopeReady&&location.href!==lastRoute)syncNavigation()},2000);
 window.addEventListener('popstate',()=>{if(scopeReady)syncNavigation()});
 (async()=>{await hydrate();await captureCompleted();await captureOfficialExposure();scheduleRender(0)})();
 })();
