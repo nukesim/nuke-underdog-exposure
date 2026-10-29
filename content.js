@@ -11,6 +11,11 @@ const norm=s=>clean(s).toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -
 const tokens=s=>norm(s).split(' ').filter(Boolean);
 const aliasKeys=s=>{const a=tokens(s);if(!a.length)return [];const out=[norm(s)];if(a.length>1)out.push(a.slice(-2).join(' '));out.push(a.at(-1));if(/^(ii|iii|iv|jr|sr)$/.test(a.at(-1))&&a.length>1){out.push(a.slice(-2).join(' '));out.push(a.at(-2))}return [...new Set(out)]};
 const contestNorm=s=>clean(s).replace(/\s*-\s*/g,' - ').replace(/\s+/g,' ').trim();
+const invalidContestLabel=name=>{
+ const x=contestNorm(name);
+ return !x||x===Core.NONE||x==='ALL'||/^(?:Queue|Players|Drafts|Your teams?|Your picks|Home|Rankings|Exposure|Entry|Entries|Prizes?|Games|Entrants|Enter|Draft now|Daily|Slates|Lobby|Active|Completed|QB|RB|WR|TE)$/i.test(x)||/^\d+\s+picks?\s+away$/i.test(x)||/^draft starts in\b/i.test(x)||/^waiting\b/i.test(x);
+};
+const validContestLabel=name=>!invalidContestLabel(name);
 const isCompletedPage=()=>/\/completed(?:\/|$)/i.test(location.pathname);
 
 function harvestStructured(root){
@@ -126,7 +131,7 @@ function rememberTournamentScopes(root){
  const walk=(v,depth=0)=>{if(!v||typeof v!=='object'||depth>12||seen.has(v))return;seen.add(v);if(Array.isArray(v)){v.forEach(x=>walk(x,depth+1));return}
   const t=v.tournament||v.contest;
   const name=contestNorm(v.tournament_name||v.contest_name||t?.title||t?.name||'');
-  if(name){const scope={sport:clean(v.sport_name||v.sport||t?.sport||pageSport()).toUpperCase(),contest:name};const ids=[v.draft_id,v.draftId,v.tournament_id,v.contest_id,t?.id];if(t&&v.id)ids.push(v.id);for(const id of ids.filter(Boolean))routeScopes.set(String(id),scope);if(!knownTournaments.some(x=>Core.sameScope(x,scope))){knownTournaments.push(scope);safe(()=>chrome.storage.local.set({knownTournaments}))}}
+  if(name&&validContestLabel(name)){const scope={sport:clean(v.sport_name||v.sport||t?.sport||pageSport()).toUpperCase(),contest:name};const ids=[v.draft_id,v.draftId,v.tournament_id,v.contest_id,t?.id];if(t&&v.id)ids.push(v.id);for(const id of ids.filter(Boolean))routeScopes.set(String(id),scope);if(!knownTournaments.some(x=>Core.sameScope(x,scope))){knownTournaments.push(scope);safe(()=>chrome.storage.local.set({knownTournaments}))}}
   Object.values(v).forEach(x=>walk(x,depth+1));
  };walk(root);
 }
@@ -143,7 +148,7 @@ function visibleTournamentNames(){
  for(const el of elements){
   if(el.offsetParent===null||el.closest('[id^="nuke-"]'))continue;
   const name=contestNorm(el.dataset.tournamentName||el.textContent);
-  if(!name||name.length>100||/^(Daily|Slates|Lobby|Active|Completed|Players|Drafts|Your teams?|Your picks|Home|Rankings|Exposure|Entry|Prizes|Games|Entrants|Enter|Draft now)$/i.test(name)||/^(NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b|^Round\s+\d/i.test(name))continue;
+  if(!name||name.length>100||!validContestLabel(name)||/^(NFL|NBA|MLB|NHL|PGA|MMA|WNBA|CFB|CBB|Soccer)\b|^Round\s+\d/i.test(name))continue;
   if(!found.some(x=>x.contest===name))found.push({sport,contest:name});
  }
  return found;
@@ -156,13 +161,19 @@ function discoverTournaments(){
 }
 function syncActiveScope(force=false){
  discoverTournaments();const route=location.href,changed=route!==lastRoute;
- const names=visibleTournamentNames();let scope=null;
+ const names=visibleTournamentNames();let scope=null,inherited=false;
  const routeId=location.pathname.split('/').filter(Boolean).at(-1);
  if(routeScopes.has(routeId))scope=routeScopes.get(routeId);
- if(isCompletedPage()){const contest=detectCompletedContest();if(contest)scope={sport:pageSport(),contest}}
+ if(isCompletedPage()){const contest=detectCompletedContest();if(contest&&validContestLabel(contest))scope={sport:pageSport(),contest}}
  else if(/\/(draft|tournament|contest|exposure)\//.test(location.pathname)&&names.length===1)scope=names[0];
+ // A live draft often exposes only UI headings such as "Queue". If we do not
+ // have a route/API scope, inherit the last confirmed real tournament instead
+ // of overwriting exposure scope with a junk label or NONE.
+ if(!scope&&/\/draft\//i.test(location.pathname)&&validContestLabel(cached.selected)){
+  scope={sport:pageSport(),contest:cached.selected};inherited=true;
+ }
  // During SPA navigation the old heading can survive for one frame.
- if(changed&&!routeScopes.has(routeId)&&Core.sameScope(scope,activePageScope))scope=null;
+ if(changed&&!routeScopes.has(routeId)&&Core.sameScope(scope,activePageScope)&&!inherited)scope=null;
  if(!scope&&changed){scope={sport:pageSport(),contest:Core.NONE}}
  if(!scope&&!force)return activePageScope;
  if(!scope)scope=activePageScope||{sport:pageSport(),contest:Core.NONE};
@@ -197,15 +208,22 @@ async function hydrate(){
 }
 function rosterStrings(){
  const out=[];
- for(const el of document.querySelectorAll('*')){
-  if(el.children.length>8)continue;
-  const lines=(el.innerText||'').split('\n').map(clean).filter(Boolean);
-  for(let i=0;i<lines.length;i++)if(/^\d+(?:\.\d+)?\s*Projected$/i.test(lines[i])){
-   const n=lines[i+1]||'';const ps=n.split(',').map(clean).filter(Boolean);
-   if(ps.length>=2&&ps.length<=12)out.push(n);
+ const markers=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
+ for(const marker of markers){
+  let card=marker.parentElement,roster='';
+  for(let depth=0;depth<7&&card&&card!==document.body;depth++,card=card.parentElement){
+   const lines=(card.innerText||'').split('\n').map(clean).filter(Boolean);
+   const pi=lines.findIndex(x=>/^\d+(?:\.\d+)?\s*Projected$/i.test(x));
+   if(pi<0)continue;
+   for(let j=pi+1;j<Math.min(lines.length,pi+5);j++){
+    const ps=lines[j].split(',').map(clean).filter(Boolean);
+    if(ps.length>=2&&ps.length<=12){roster=lines[j];break}
+   }
+   if(roster)break;
   }
+  if(roster)out.push(roster);
  }
- return [...new Set(out)];
+ return out;
 }
 function detectCompletedContest(){
  const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Your teams?$/i.test(clean(el.textContent)));
@@ -237,34 +255,44 @@ function detectSport(){
 async function captureCompleted(){
  if(!isCompletedPage())return {ok:false,reason:'not_completed'};
  const rosters=rosterStrings(); if(!rosters.length)return {ok:false,reason:'no_rosters'};
- const contest=detectCompletedContest(); if(!contest)return {ok:false,reason:'no_contest'}; const sport=detectSport();
+ const contest=detectCompletedContest(); if(!contest||!validContestLabel(contest))return {ok:false,reason:'no_contest'}; const sport=detectSport();
  const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
  const current=stored?.drafts||[],universe=stored?.playerUniverse||cached.playerUniverse||{},official=stored?.officialExposure||cached.officialExposure||{};
- const stableFullNames=new Map();
- for(const [k,v] of Object.entries(universe))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
- for(const v of Object.values(official))if(v?.name&&tokens(v.name).length>=2)stableFullNames.set(norm(v.name),v.name);
- for(const d of current)for(const p of (d.players||[]))if(tokens(p.name).length>=2)stableFullNames.set(norm(p.name),clean(p.name));
  const expand=raw=>Core.resolve({name:raw,sport},identityPool()).name;
  const fp=players=>players.map(p=>aliasKeys(p.name).at(-1)||norm(p.name)).sort().join('|');
- const existingFingerprints=new Map();
- current.forEach((d,i)=>{if(d.contest===contest)existingFingerprints.set(fp(d.players||[]),i)});
- const drafts=[...current];
- for(const raw of rosters){
-  const players=raw.split(',').map(clean).filter(Boolean).map(name=>({name:expand(name)}));if(players.length<2)continue;
-  const fingerprint=fp(players),idx=existingFingerprints.get(fingerprint);
-  if(idx!=null){
-   // Same completed team: enrich its names, do not add another draft.
-   const old=drafts[idx],oldBySurname=new Map((old.players||[]).map(p=>[aliasKeys(p.name).at(-1),p]));
-   drafts[idx]={...old,players:players.map(p=>tokens(p.name).length>=2?p:(oldBySurname.get(aliasKeys(p.name).at(-1))||p))};
-   continue;
-  }
-  const draftId='dom|'+contest+'|'+fingerprint;
-  drafts.push({draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'completed-dom'});
-  existingFingerprints.set(fingerprint,drafts.length-1);
+ const parsed=rosters.map(raw=>raw.split(',').map(clean).filter(Boolean).map(name=>({name:expand(name)}))).filter(players=>players.length>=2);
+ const oldDom=current.filter(d=>d.contest===contest&&['completed-dom','completed-card-v2'].includes(d.source));
+ // Do not replace a more complete prior snapshot with an early partial SPA render.
+ if(oldDom.length&&parsed.length<oldDom.length)return {ok:false,reason:'partial_rosters',rosters:parsed.length,previous:oldDom.length};
+
+ const completedFpSet=new Set(parsed.map(fp));
+ // Remove the old fingerprint-deduped DOM captures for this contest. Also drop
+ // bad live-auto Queue captures once the same completed roster is visible under
+ // the confirmed tournament.
+ const base=current.filter(d=>{
+  if(d.contest===contest&&['completed-dom','completed-card-v2'].includes(d.source))return false;
+  if(String(d.sport||'').toUpperCase()===String(sport).toUpperCase()&&invalidContestLabel(d.contest)&&d.source==='live-auto'&&completedFpSet.has(fp(d.players||[])))return false;
+  return true;
+ });
+
+ // Real API entries are authoritative. DOM cards only fill missing occurrences.
+ const stableCounts=new Map();
+ for(const d of base)if(d.contest===contest&&String(d.sport||'').toUpperCase()===String(sport).toUpperCase()){
+  const k=fp(d.players||[]);stableCounts.set(k,(stableCounts.get(k)||0)+1);
  }
- await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest},activePageScope:{sport,contest},lastCompletedSync:{contest,sport,rosters:rosters.length,at:Date.now()}}));
+ const seen=new Map(),drafts=[...base],routeKey=location.pathname.replace(/[^a-z0-9]+/gi,'_').slice(-120);
+ const hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)};
+ for(const players of parsed){
+  const fingerprint=fp(players),occ=(seen.get(fingerprint)||0)+1;seen.set(fingerprint,occ);
+  if(occ<=(stableCounts.get(fingerprint)||0))continue;
+  // No pipe in this ID: Core treats each card instance as a real distinct entry,
+  // so two identical six-player lineups count as two drafts.
+  const draftId='completed:'+hash(routeKey+':'+contest)+':'+hash(fingerprint)+':'+occ;
+  drafts.push({draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'completed-card-v2'});
+ }
+ await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest},activePageScope:{sport,contest},lastSelectedContest:contest,lastCompletedSync:{contest,sport,rosters:parsed.length,at:Date.now()}}));
  cached.drafts=drafts;activePageScope={sport,contest};cached.sport=sport;cached.selected=contest;computeStats();
- return {ok:true,contest,sport,rosters:rosters.length,total:drafts.filter(d=>d.contest===contest&&String(d.sport||'').toUpperCase()===String(sport).toUpperCase()).length};
+ return {ok:true,contest,sport,rosters:parsed.length,total:Core.displayDrafts(drafts,identityPool()).filter(d=>d.contest===contest&&String(d.sport||'').toUpperCase()===String(sport).toUpperCase()).length};
 }
 function playerPoolRoot(){
  const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Players$/i.test(clean(el.textContent))&&el.offsetParent!==null);
