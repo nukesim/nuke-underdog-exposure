@@ -58,6 +58,14 @@ test('Week 5 starts empty while Week 4 history remains',()=>{
  assert.equal(Core.displayDrafts(drafts,pool).filter(d=>Core.matchesScope(d,scope5)).length,0);
  assert.equal(Core.displayDrafts(drafts,pool).filter(d=>Core.matchesScope(d,scope4)).length,1);
 });
+test('completed card instance IDs preserve duplicate identical lineups',()=>{
+ const players=[{name:'Keenan Allen'},{name:'Hunter Henry'}];
+ const drafts=[
+  {draftId:'completed:week8:abc:1',sport:'NFL',contest:'The Hurry Up',source:'completed-card-v2',players},
+  {draftId:'completed:week8:abc:2',sport:'NFL',contest:'The Hurry Up',source:'completed-card-v2',players}
+ ];
+ assert.equal(Core.displayDrafts(drafts,pool).length,2);
+});
 test('distinct real entries with identical rosters are preserved',()=>{
  const players=[{name:'Keenan Allen'},{name:'Hunter Henry'}];
  const drafts=[{draftId:'a',...scope4,players},{draftId:'b',...scope4,players},{draftId:'a',...scope4,players},{draftId:'dom|old',...scope4,players}];
