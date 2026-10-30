@@ -9,7 +9,7 @@ const norm=Core.norm||((s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' 
 const NONE=Core.NONE||'__NO_TOURNAMENT__';
 let model={total:0,counts:new Map(),pairs:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
 let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0,rosterRootCache=null;
-let stackTeams=new Set(),draftedQB=false,draftedQBTeam='',lastStackScan=0;
+let stackTeams=new Set(),draftedTeams=new Set(),draftedQB=false,draftedQBTeam='',lastStackScan=0;
 
 document.documentElement.classList.add('nuke-stable-mode');
 
@@ -134,18 +134,19 @@ function rosterRoot(){
 function refreshStackTargets(force=false){
  const now=Date.now();if(!force&&now-lastStackScan<500)return;
  lastStackScan=now;
- const root=rosterRoot(),teams=new Set();let hasQB=false,qbTeam='';
+ const root=rosterRoot(),teams=new Set(),allTeams=new Set();let hasQB=false,qbTeam='';
  if(root){
   const map=catalogMetaMap();
   for(const el of root.getElementsByTagName('*')){
    if(!visible(el)||el.children.length)continue;
    const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),p=map.get(norm(raw));if(!p)continue;
    const pos=String(p.pos||p.position||'').toUpperCase(),team=String(p.teamAbbr||p.team||'').toUpperCase();
+   if(team)allTeams.add(team);
    if(pos==='QB'){hasQB=true;if(team)qbTeam=team}
    else if((pos==='WR'||pos==='TE')&&team)teams.add(team);
   }
  }
- stackTeams=teams;draftedQB=hasQB;draftedQBTeam=qbTeam;
+ stackTeams=teams;draftedTeams=allTeams;draftedQB=hasQB;draftedQBTeam=qbTeam;
 }
 function playerRowFor(el,root){
  const rr=root.getBoundingClientRect();let p=el.parentElement;
@@ -156,6 +157,7 @@ function playerRowFor(el,root){
  return null;
 }
 function clearStackHighlights(root){
+ root.querySelectorAll('.nuke-team-dot').forEach(x=>x.remove());
  root.querySelectorAll('[data-nuke-reverse-stack-row],[data-nuke-forward-stack-row]').forEach(row=>{
   row.classList.remove('nuke-stack-row');delete row.dataset.nukeReverseStackRow;delete row.dataset.nukeForwardStackRow;
  });
@@ -192,25 +194,30 @@ function renderBadges(){
   b.title=`NUKE exposure · ${model.scope.sport} · ${model.scope.contest}`;
   b.style.color=colorFor(count,model.total);
 
-  // Reverse stack: after drafting a WR/TE, make that team's AVAILABLE QB
-  // impossible to miss. This uses the existing green stack treatment and does
-  // not change exposure, combo, dupe-path, queue, or draft-board behavior.
-  if(!draftedQB&&meta){
+  if(meta){
    const pos=String(meta.pos||meta.position||'').toUpperCase(),team=String(meta.teamAbbr||meta.team||'').toUpperCase();
-   if(pos==='QB'&&team&&stackTeams.has(team)){
+   const reverseStack=!draftedQB&&pos==='QB'&&team&&stackTeams.has(team);
+   const forwardStack=!!(draftedQB&&draftedQBTeam&&(pos==='RB'||pos==='WR'||pos==='TE')&&team===draftedQBTeam);
+
+   // Green glow remains reserved ONLY for true QB-stack relationships.
+   if(reverseStack){
     el.classList.add('nuke-qb-stack');el.dataset.nukeReverseStackName='1';el.title=`STACK QB · ${team}`;
     const row=playerRowFor(el,root);if(row){row.classList.add('nuke-stack-row');row.dataset.nukeReverseStackRow='1'}
    }
-  }
-
-  // Forward stack: once a QB is drafted, highlight every AVAILABLE RB/WR/TE
-  // from that QB's team with the same green stack treatment. Everything else
-  // in the ownership, combo and dupe-path systems remains unchanged.
-  if(draftedQB&&draftedQBTeam&&meta){
-   const pos=String(meta.pos||meta.position||'').toUpperCase(),team=String(meta.teamAbbr||meta.team||'').toUpperCase();
-   if((pos==='RB'||pos==='WR'||pos==='TE')&&team===draftedQBTeam){
+   if(forwardStack){
     el.classList.add('nuke-qb-stack');el.dataset.nukeForwardStackName='1';el.title=`QB STACK · ${team}`;
     const row=playerRowFor(el,root);if(row){row.classList.add('nuke-stack-row');row.dataset.nukeForwardStackRow='1'}
+   }
+
+   // Separate same-team awareness signal. Example: if an RB is already drafted,
+   // remaining WR/TE teammates get a blue dot. Suppress the dot when the player
+   // already has the stronger green QB-stack signal so stacking logic stays clear.
+   if(team&&draftedTeams.has(team)&&!reverseStack&&!forwardStack){
+    const dot=document.createElement('span');
+    dot.className='nuke-team-dot';
+    dot.dataset.nukeTeamDot='1';
+    dot.title=`TEAMMATE ALREADY DRAFTED · ${team}`;
+    b.insertAdjacentElement('afterend',dot);
    }
   }
  }
@@ -238,7 +245,8 @@ function render(){
  if(!isDraftPage()){
   document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
-  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedQB=false;draftedQBTeam='';return;
+  document.querySelectorAll('.nuke-team-dot').forEach(x=>x.remove());
+  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedTeams=new Set();draftedQB=false;draftedQBTeam='';return;
  }
  // Ownership behavior is intentionally unchanged. Once the dedicated combo
  // dock is loaded, do not waste cycles rendering a second hidden combo panel.
