@@ -47,13 +47,10 @@
         "perf-guard.js",
         "content.js",
         "active-badges.js",
-        "combo-dock.js",
-        "portfolio-guard.js"
+        "dupe-tracker.js"
       ],
       "css": [
-        "overlay.css",
-        "combo-dock.css",
-        "portfolio-guard.css"
+        "overlay.css"
       ],
       "run_at": "document_idle"
     }
