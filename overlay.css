@@ -120,3 +120,18 @@ html.nuke-stable-mode #nuke-combo-panel{display:none!important}
 .nuke-stable-combo-row{display:flex!important;justify-content:space-between!important;gap:12px!important;padding:5px 0!important;border-top:1px solid #1d2a35!important}
 .nuke-stable-combo-row span{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
 .nuke-stable-combo-row b{flex:0 0 auto!important;color:#dce8f1!important}
+
+
+/* Same-team awareness: informational only. Blue/cyan is intentionally distinct
+   from the green QB-stack glow. Hidden whenever true stack highlighting applies. */
+.nuke-team-dot{
+  display:inline-block!important;
+  width:7px!important;
+  height:7px!important;
+  margin-left:5px!important;
+  border-radius:50%!important;
+  background:#38bdf8!important;
+  box-shadow:0 0 5px rgba(56,189,248,.75)!important;
+  vertical-align:middle!important;
+  transform:translateY(-1px)!important;
+}
