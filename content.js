@@ -678,7 +678,7 @@ function renderComboPanel(){
     '<div class="nuke-next-metrics"><div><b>'+x.fit+'</b><span>FIT</span></div><div><b>'+x.covered+'/'+drafted.length+'</b><span>WITH</span></div><div><b>'+pct+'%</b><span>EXP</span></div></div></div>';
   }).join('')+(candidates.length?'':'<div class="nuke-combo-empty">No available players detected.</div>');
 }
-function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{if(scopeReady)syncNavigation();renderBadges();renderComboPanel()}finally{scanBusy=false}}},ms)}
+function scheduleRender(ms=80){clearTimeout(scanTimer);scanTimer=setTimeout(()=>{if(!scanBusy){scanBusy=true;try{if(scopeReady)syncNavigation();if(!/\/draft\//i.test(location.pathname)){renderBadges();renderComboPanel()}}finally{scanBusy=false}}},ms)}
 const obs=new MutationObserver(m=>{if(scopeReady)syncNavigation();if(!m.some(x=>[...x.addedNodes].some(n=>n.nodeType===1&&!n.closest?.('[data-nuke-exposure]'))))return;if(isCompletedPage()){clearTimeout(captureTimer);captureTimer=setTimeout(captureCompleted,350)}else if(location.pathname.includes('/exposure/')){clearTimeout(captureTimer);captureTimer=setTimeout(captureOfficialExposure,250)}else scheduleRender()});
 obs.observe(document.documentElement,{childList:true,subtree:true});
 
