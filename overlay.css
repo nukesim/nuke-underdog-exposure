@@ -162,3 +162,21 @@ html.nuke-stable-mode #nuke-combo-panel{display:none!important}
 #nuke-dupe-pill.nuke-dupe-level-4{border-color:#f97316!important;color:#fb923c!important;background:rgba(249,115,22,.13)!important}
 #nuke-dupe-pill.nuke-dupe-level-5{border-color:#ef4444!important;color:#f87171!important;background:rgba(239,68,68,.16)!important}
 #nuke-dupe-pill.nuke-dupe-level-6{border-color:#dc2626!important;color:#ff5a5a!important;background:rgba(220,38,38,.20)!important;box-shadow:0 0 10px rgba(220,38,38,.18)!important}
+
+
+#nuke-dupe-pill .nuke-dupe-main{
+  display:block!important;
+  font-size:10px!important;
+  font-weight:900!important;
+  line-height:1.05!important;
+}
+#nuke-dupe-pill .nuke-dupe-names{
+  display:block!important;
+  margin-top:3px!important;
+  color:#e2e8f0!important;
+  font-size:9px!important;
+  font-weight:800!important;
+  line-height:1.15!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+}
