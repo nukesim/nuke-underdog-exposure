@@ -79,6 +79,12 @@ function dupeState(picks){
  }
  return best;
 }
+function shortName(name){
+ const parts=clean(name).split(/\s+/).filter(Boolean);
+ if(parts.length<=1)return clean(name);
+ const suffix=/^(?:Jr\.?|Sr\.?|II|III|IV)$/i.test(parts.at(-1));
+ return suffix&&parts.length>=2?parts.slice(-2).join(' '):parts.at(-1);
+}
 function playerPaneVisible(){
  try{
   const snap=document.evaluate("//*[normalize-space(text())='Players']",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
@@ -114,7 +120,13 @@ function render(){
  if(!playerPaneVisible()){el.hidden=true;return}
  const picks=currentPicks(),state=dupeState(picks),level=Math.max(0,Math.min(6,state.level));
  el.className='nuke-dupe-pill nuke-dupe-level-'+level;
- el.textContent=picks.length?('DUPE PATH · '+level+'/6'):'DUPE PATH · 0/6';
+ const label=level>=6?'FULL DUPLICATE · 6/6':('DUPE PATH · '+level+'/6');
+ const names=state.matches.map(shortName);
+ el.replaceChildren();
+ const main=document.createElement('span');main.className='nuke-dupe-main';main.textContent=label;el.appendChild(main);
+ if(names.length){
+  const detail=document.createElement('span');detail.className='nuke-dupe-names';detail.textContent=names.join(' · ');el.appendChild(detail);
+ }
  el.title=state.matches.length?('Closest prior lineup matches: '+state.matches.join(' + ')):'No matching prior core yet';
  position(el,queueTitle());
 }
