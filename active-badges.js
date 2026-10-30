@@ -7,7 +7,7 @@ const Core=globalThis.NukeExposure;
 if(!Core)return;
 const norm=Core.norm||((s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' '));
 const NONE=Core.NONE||'__NO_TOURNAMENT__';
-let model={total:0,counts:new Map(),pairs:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
+let model={total:0,counts:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
 let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0,rosterRootCache=null;
 let stackTeams=new Set(),draftedTeams=new Set(),draftedQB=false,draftedQBTeam='',lastStackScan=0;
 
@@ -46,16 +46,12 @@ function buildModel(data){
   return name;
  };
 
- const counts=new Map(),pairs=new Map();
+ const counts=new Map();
  for(const d of resolved){
   const names=[...new Set((d.players||[]).map(p=>canonical(p,d)).filter(Boolean))];
   for(const name of names){const key=norm(name);if(key)counts.set(key,(counts.get(key)||0)+1)}
-  const sorted=names.slice().sort((a,b)=>a.localeCompare(b));
-  for(let i=0;i<sorted.length;i++)for(let j=i+1;j<sorted.length;j++){
-   const key=sorted[i]+' + '+sorted[j];pairs.set(key,(pairs.get(key)||0)+1);
-  }
  }
- model={total:resolved.length,counts,pairs,scope,pool};
+ model={total:resolved.length,counts,scope,pool};
 }
 
 async function refreshData(){
@@ -223,24 +219,6 @@ function renderBadges(){
  }
 }
 
-function stableComboPanel(){
- let panel=document.getElementById('nuke-stable-combo-panel');
- if(!panel){panel=document.createElement('section');panel.id='nuke-stable-combo-panel';document.body.appendChild(panel)}
- return panel;
-}
-function renderCombo(){
- const panel=stableComboPanel();
- if(!isDraftPage()||!model.total){panel.hidden=true;return}
- const host=findQueueHost();if(!host){return}
- const r=host.getBoundingClientRect();if(r.width<250||r.bottom<0||r.top>innerHeight){panel.hidden=true;return}
- panel.hidden=false;panel.style.left=Math.round(r.left)+'px';panel.style.width=Math.round(r.width)+'px';panel.style.top=Math.round(r.top+30)+'px';
- const top=[...model.pairs.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,8);
- const frag=document.createDocumentFragment(),head=document.createElement('div');head.className='nuke-stable-combo-head';
- const title=document.createElement('b');title.textContent='NUKE · TOP COMBOS';const total=document.createElement('span');total.textContent=model.total+' drafts';head.append(title,total);frag.append(head);
- for(const [name,count] of top){const row=document.createElement('div');row.className='nuke-stable-combo-row';const n=document.createElement('span'),v=document.createElement('b');n.textContent=name;v.textContent=`${count}/${model.total} · ${Math.round(count/model.total*100)}%`;row.append(n,v);frag.append(row)}
- panel.replaceChildren(frag);
-}
-
 function render(){
  if(!isDraftPage()){
   document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
@@ -248,10 +226,8 @@ function render(){
   document.querySelectorAll('.nuke-team-dot').forEach(x=>x.remove());
   playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedTeams=new Set();draftedQB=false;draftedQBTeam='';return;
  }
- // Ownership behavior is intentionally unchanged. Once the dedicated combo
- // dock is loaded, do not waste cycles rendering a second hidden combo panel.
+ // Live screen intentionally stays limited to ownership + stack/team signals.
  renderBadges();
- if(!globalThis.__NUKE_COMBO_DOCK_V2__&&!globalThis.__NUKE_COMBO_DOCK_V3__)renderCombo();
 }
 
 async function tick(){
