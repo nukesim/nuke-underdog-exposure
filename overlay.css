@@ -180,3 +180,27 @@ html.nuke-stable-mode #nuke-combo-panel{display:none!important}
   white-space:normal!important;
   overflow-wrap:anywhere!important;
 }
+
+
+/* Pre-pick portfolio memory: shows which current picks have already appeared
+   with this AVAILABLE player in a prior completed lineup. */
+.nuke-if-picked{
+  display:inline-flex!important;
+  align-items:center!important;
+  margin-left:5px!important;
+  padding:1px 5px!important;
+  border:1px solid #334155!important;
+  border-radius:999px!important;
+  background:rgba(15,23,42,.92)!important;
+  color:#cbd5e1!important;
+  font:900 8px/1.2 Arial,sans-serif!important;
+  letter-spacing:.1px!important;
+  white-space:nowrap!important;
+  vertical-align:middle!important;
+  transform:translateY(-1px)!important;
+}
+.nuke-if-picked.nuke-dupe-level-2{border-color:#4ade80!important;color:#86efac!important;background:rgba(74,222,128,.10)!important}
+.nuke-if-picked.nuke-dupe-level-3{border-color:#eab308!important;color:#fde047!important;background:rgba(234,179,8,.10)!important}
+.nuke-if-picked.nuke-dupe-level-4{border-color:#f97316!important;color:#fb923c!important;background:rgba(249,115,22,.11)!important}
+.nuke-if-picked.nuke-dupe-level-5{border-color:#ef4444!important;color:#f87171!important;background:rgba(239,68,68,.14)!important}
+.nuke-if-picked.nuke-dupe-level-6{border-color:#dc2626!important;color:#ff5a5a!important;background:rgba(220,38,38,.18)!important}
