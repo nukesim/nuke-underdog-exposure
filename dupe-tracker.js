@@ -111,7 +111,7 @@ function pill(){
 function position(el,title){
  if(!title){el.hidden=true;return}
  const r=title.getBoundingClientRect();
- const w=190,left=Math.max(8,Math.round(r.left+r.width/2-w/2)),top=Math.max(8,Math.round(r.top-34));
+ const w=260,left=Math.max(8,Math.round(r.left+r.width/2-w/2)),top=Math.max(8,Math.round(r.top-46));
  el.style.left=left+'px';el.style.top=top+'px';el.style.width=w+'px';el.hidden=false;
 }
 function render(){
