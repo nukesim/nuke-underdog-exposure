@@ -79,6 +79,13 @@ function dupeState(picks){
  }
  return best;
 }
+function playerPaneVisible(){
+ try{
+  const snap=document.evaluate("//*[normalize-space(text())='Players']",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
+  for(let i=0;i<snap.snapshotLength;i++)if(visible(snap.snapshotItem(i)))return true;
+ }catch{}
+ return false;
+}
 function queueTitle(){
  try{
   const snap=document.evaluate("//*[normalize-space(text())='Queue' or starts-with(normalize-space(text()),'Queue ')]",document,null,XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,null);
@@ -104,7 +111,7 @@ function position(el,title){
 function render(){
  const el=pill();
  if(!isDraftPage()||!history.length){el.hidden=true;return}
- if(!document.body.innerText.includes('Players')){el.hidden=true;return}
+ if(!playerPaneVisible()){el.hidden=true;return}
  const picks=currentPicks(),state=dupeState(picks),level=Math.max(0,Math.min(6,state.level));
  el.className='nuke-dupe-pill nuke-dupe-level-'+level;
  el.textContent=picks.length?('DUPE PATH · '+level+'/6'):'DUPE PATH · 0/6';
