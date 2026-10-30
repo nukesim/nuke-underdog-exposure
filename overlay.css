@@ -135,3 +135,30 @@ html.nuke-stable-mode #nuke-combo-panel{display:none!important}
   vertical-align:middle!important;
   transform:translateY(-1px)!important;
 }
+
+
+/* Minimal live duplicate-path pill. No TOP COMBOS / NUKE NEXT panel. */
+#nuke-dupe-pill{
+  position:fixed!important;
+  z-index:2147483000!important;
+  box-sizing:border-box!important;
+  padding:6px 10px!important;
+  border:1px solid #334155!important;
+  border-radius:999px!important;
+  background:rgba(13,21,29,.96)!important;
+  color:#cbd5e1!important;
+  font:800 10px/1.15 Arial,sans-serif!important;
+  letter-spacing:.3px!important;
+  text-align:center!important;
+  white-space:nowrap!important;
+  pointer-events:none!important;
+  box-shadow:0 4px 14px rgba(0,0,0,.18)!important;
+}
+#nuke-dupe-pill[hidden]{display:none!important}
+#nuke-dupe-pill.nuke-dupe-level-0{border-color:#334155!important;color:#94a3b8!important}
+#nuke-dupe-pill.nuke-dupe-level-1{border-color:#15803d!important;color:#22c55e!important;background:rgba(21,128,61,.12)!important}
+#nuke-dupe-pill.nuke-dupe-level-2{border-color:#4ade80!important;color:#86efac!important;background:rgba(74,222,128,.12)!important}
+#nuke-dupe-pill.nuke-dupe-level-3{border-color:#eab308!important;color:#fde047!important;background:rgba(234,179,8,.12)!important}
+#nuke-dupe-pill.nuke-dupe-level-4{border-color:#f97316!important;color:#fb923c!important;background:rgba(249,115,22,.13)!important}
+#nuke-dupe-pill.nuke-dupe-level-5{border-color:#ef4444!important;color:#f87171!important;background:rgba(239,68,68,.16)!important}
+#nuke-dupe-pill.nuke-dupe-level-6{border-color:#dc2626!important;color:#ff5a5a!important;background:rgba(220,38,38,.20)!important;box-shadow:0 0 10px rgba(220,38,38,.18)!important}
