@@ -7,9 +7,9 @@ const Core=globalThis.NukeExposure;
 if(!Core)return;
 const norm=Core.norm||((s)=>String(s||'').trim().toLowerCase().replace(/\s+/g,' '));
 const NONE=Core.NONE||'__NO_TOURNAMENT__';
-let model={total:0,counts:new Map(),scope:{sport:'NFL',contest:NONE},pool:[]};
+let model={total:0,counts:new Map(),history:[],scope:{sport:'NFL',contest:NONE},pool:[]};
 let playerRoot=null,lastUrl='',tickBusy=false,scrollRaf=0,rosterRootCache=null;
-let stackTeams=new Set(),draftedTeams=new Set(),draftedQB=false,draftedQBTeam='',lastStackScan=0;
+let stackTeams=new Set(),draftedTeams=new Set(),draftedNames=[],draftedQB=false,draftedQBTeam='',lastStackScan=0;
 
 document.documentElement.classList.add('nuke-stable-mode');
 
@@ -51,7 +51,7 @@ function buildModel(data){
   const names=[...new Set((d.players||[]).map(p=>canonical(p,d)).filter(Boolean))];
   for(const name of names){const key=norm(name);if(key)counts.set(key,(counts.get(key)||0)+1)}
  }
- model={total:resolved.length,counts,scope,pool};
+ model={total:resolved.length,counts,history:resolved,scope,pool};
 }
 
 async function refreshData(){
@@ -130,19 +130,20 @@ function rosterRoot(){
 function refreshStackTargets(force=false){
  const now=Date.now();if(!force&&now-lastStackScan<500)return;
  lastStackScan=now;
- const root=rosterRoot(),teams=new Set(),allTeams=new Set();let hasQB=false,qbTeam='';
+ const root=rosterRoot(),teams=new Set(),allTeams=new Set(),names=[];let hasQB=false,qbTeam='';
  if(root){
   const map=catalogMetaMap();
   for(const el of root.getElementsByTagName('*')){
    if(!visible(el)||el.children.length)continue;
    const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),p=map.get(norm(raw));if(!p)continue;
    const pos=String(p.pos||p.position||'').toUpperCase(),team=String(p.teamAbbr||p.team||'').toUpperCase();
+   if(!names.some(x=>norm(x)===norm(p.name)))names.push(p.name);
    if(team)allTeams.add(team);
    if(pos==='QB'){hasQB=true;if(team)qbTeam=team}
    else if((pos==='WR'||pos==='TE')&&team)teams.add(team);
   }
  }
- stackTeams=teams;draftedTeams=allTeams;draftedQB=hasQB;draftedQBTeam=qbTeam;
+ stackTeams=teams;draftedTeams=allTeams;draftedNames=names;draftedQB=hasQB;draftedQBTeam=qbTeam;
 }
 function playerRowFor(el,root){
  const rr=root.getBoundingClientRect();let p=el.parentElement;
@@ -153,7 +154,7 @@ function playerRowFor(el,root){
  return null;
 }
 function clearStackHighlights(root){
- root.querySelectorAll('.nuke-team-dot').forEach(x=>x.remove());
+ root.querySelectorAll('.nuke-team-dot,.nuke-if-picked').forEach(x=>x.remove());
  root.querySelectorAll('[data-nuke-reverse-stack-row],[data-nuke-forward-stack-row]').forEach(row=>{
   row.classList.remove('nuke-stack-row');delete row.dataset.nukeReverseStackRow;delete row.dataset.nukeForwardStackRow;
  });
@@ -161,6 +162,32 @@ function clearStackHighlights(root){
   el.classList.remove('nuke-qb-stack');delete el.dataset.nukeReverseStackName;delete el.dataset.nukeForwardStackName;
   if(el.title?.startsWith('STACK QB · ')||el.title?.startsWith('QB STACK · '))el.removeAttribute('title');
  });
+}
+
+function shortName(name){
+ const parts=String(name||'').trim().split(/\s+/).filter(Boolean);
+ if(parts.length<=1)return String(name||'').trim();
+ const suffix=/^(?:Jr\.?|Sr\.?|II|III|IV)$/i.test(parts.at(-1));
+ return suffix&&parts.length>=2?parts.slice(-2).join(' '):parts.at(-1);
+}
+function candidateDupe(name){
+ if(!draftedNames.length||!model.history.length)return {level:0,matches:[]};
+ const candidate=norm(name);let best={level:0,matches:[]};
+ for(const d of model.history){
+  const old=new Set((d.players||[]).map(p=>norm(p.name)).filter(Boolean));
+  if(!old.has(candidate))continue;
+  const matches=draftedNames.filter(x=>old.has(norm(x)));
+  const level=matches.length+1;
+  if(level>best.level)best={level,matches};
+ }
+ return best;
+}
+function previewText(matches,level){
+ const short=matches.map(shortName);
+ let left='';
+ if(short.length<=2)left=short.join(' + ');
+ else left=short.slice(0,2).join(' + ')+' +'+(short.length-2);
+ return (left?left+' → ':'IF PICKED → ')+level+'/6';
 }
 
 function badgeText(name){
@@ -215,6 +242,19 @@ function renderBadges(){
     dot.title=`TEAMMATE ALREADY DRAFTED · ${team}`;
     b.insertAdjacentElement('afterend',dot);
    }
+
+   // Pre-pick portfolio warning. This does not rank or recommend players; it only
+   // shows the closest historical core that WOULD be recreated by drafting them.
+   const preview=candidateDupe(full);
+   if(preview.level>=2){
+    const tag=document.createElement('span');
+    tag.className='nuke-if-picked nuke-dupe-level-'+Math.min(6,preview.level);
+    tag.dataset.nukeIfPicked='1';
+    tag.textContent=previewText(preview.matches,preview.level);
+    tag.title='If drafted: '+preview.matches.concat([full]).join(' + ')+' matched a prior completed lineup';
+    const dot=b.parentElement?.querySelector?.('.nuke-team-dot');
+    (dot||b).insertAdjacentElement('afterend',tag);
+   }
   }
  }
 }
@@ -223,8 +263,8 @@ function render(){
  if(!isDraftPage()){
   document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
-  document.querySelectorAll('.nuke-team-dot').forEach(x=>x.remove());
-  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedTeams=new Set();draftedQB=false;draftedQBTeam='';return;
+  document.querySelectorAll('.nuke-team-dot,.nuke-if-picked').forEach(x=>x.remove());
+  playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedTeams=new Set();draftedNames=[];draftedQB=false;draftedQBTeam='';return;
  }
  // Live screen intentionally stays limited to ownership + stack/team signals.
  renderBadges();
