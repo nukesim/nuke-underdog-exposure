@@ -235,12 +235,14 @@ function renderBadges(){
    // Separate same-team awareness signal. Example: if an RB is already drafted,
    // remaining WR/TE teammates get a blue dot. Suppress the dot when the player
    // already has the stronger green QB-stack signal so stacking logic stays clear.
+   let signalAnchor=b;
    if(team&&draftedTeams.has(team)&&!reverseStack&&!forwardStack){
     const dot=document.createElement('span');
     dot.className='nuke-team-dot';
     dot.dataset.nukeTeamDot='1';
     dot.title=`TEAMMATE ALREADY DRAFTED · ${team}`;
-    b.insertAdjacentElement('afterend',dot);
+    signalAnchor.insertAdjacentElement('afterend',dot);
+    signalAnchor=dot;
    }
 
    // Pre-pick portfolio warning. This does not rank or recommend players; it only
@@ -252,8 +254,7 @@ function renderBadges(){
     tag.dataset.nukeIfPicked='1';
     tag.textContent=previewText(preview.matches,preview.level);
     tag.title='If drafted: '+preview.matches.concat([full]).join(' + ')+' matched a prior completed lineup';
-    const dot=b.parentElement?.querySelector?.('.nuke-team-dot');
-    (dot||b).insertAdjacentElement('afterend',tag);
+    signalAnchor.insertAdjacentElement('afterend',tag);
    }
   }
  }
