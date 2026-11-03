@@ -30,18 +30,9 @@ function buildModel(data){
  const pool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],data.playerUniverse||{},drafts,data.officialExposure||{});
  const resolved=Core.displayDrafts(drafts,pool).filter(d=>Core.matchesScope(d,scope));
 
- const surnameFull=new Map();
- for(const d of resolved)for(const p of (d.players||[])){
-  const r=Core.resolve({...p,sport:p.sport||d.sport},pool);
-  if(r.unresolved||!r.name||!r.name.includes(' '))continue;
-  const surname=norm(r.name).split(' ').filter(Boolean).at(-1);if(!surname)continue;
-  if(!surnameFull.has(surname))surnameFull.set(surname,r.name);
-  else if(surnameFull.get(surname)!==r.name)surnameFull.set(surname,null);
- }
  const canonical=(raw,d)=>{
-  const r=Core.resolve({...raw,sport:raw.sport||d.sport},pool);let name=r.name;
-  if(r.unresolved&&name&&!name.includes(' ')){const full=surnameFull.get(norm(name));if(full)name=full}
-  return name;
+  const r=Core.resolve({...raw,sport:raw.sport||d.sport},pool);
+  return r.unresolved?'':r.name;
  };
 
  const counts=new Map();

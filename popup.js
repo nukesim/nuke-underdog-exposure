@@ -39,37 +39,29 @@ let playerUniverse={};
 function identityPool(){return Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],playerUniverse,allDrafts,officialExposure)}
 function displayDrafts(){return Core.displayDrafts(allDrafts,identityPool())}
 function filtered(){const s=$("sport").value,c=$("contest").value;return displayDrafts().filter(d=>(s==="ALL"||d.sport===s)&&(c==="ALL"||c===Core.NONE?c!==Core.NONE:d.contest===c))}
-function scopedNameMap(ds){
- const bySurname=new Map();
- for(const d of ds)for(const p of (d.players||[])){
-  if(p?.unresolved||tokens(p?.name).length<2)continue;
-  const surname=tokens(p.name).at(-1);if(!surname)continue;
-  if(!bySurname.has(surname))bySurname.set(surname,p.name);
-  else if(bySurname.get(surname)!==p.name)bySurname.set(surname,null);
- }
- return bySurname;
+function displayName(p){
+ const resolved=Core.resolve(typeof p==='string'?{name:p}:p,identityPool());
+ return resolved.unresolved?'':resolved.name;
 }
-function displayName(p,bySurname){
- const resolved=Core.resolve(typeof p==="string"?{name:p}:p,identityPool());
- if(!resolved.unresolved)return resolved.name;
- const parts=tokens(resolved.name);
- if(parts.length===1){const full=bySurname.get(parts[0]);if(full)return full}
- return Core.label(resolved);
+function pendingNames(ds){return ds.reduce((n,d)=>n+(d.players||[]).filter(p=>!displayName(p)).length,0)}
+function showStatus(){
+ const ds=filtered(),pending=pendingNames(ds);
+ status(pending?'Syncing full names · '+pending+' roster slots':ds.length?'Ready · '+ds.length+' drafts tracked':'No drafts captured yet',pending?'working':'ok');
 }
 function playerStats(ds){
- const m=new Map(),scope={sport:$("sport").value,contest:$("contest").value},bySurname=scopedNameMap(ds);
- ds.forEach(d=>{const seen=new Set();(d.players||[]).forEach(p=>{const name=displayName(p,bySurname),key=norm(name);if(!key||seen.has(key))return;seen.add(key);const cur=m.get(key)||{name,count:0};cur.count++;m.set(key,cur)})});
+ const m=new Map(),scope={sport:$("sport").value,contest:$("contest").value};
+ ds.forEach(d=>{const seen=new Set();(d.players||[]).forEach(p=>{const name=displayName(p),key=norm(name);if(!key||seen.has(key))return;seen.add(key);const cur=m.get(key)||{name,count:0};cur.count++;m.set(key,cur)})});
  for(const o of Object.values(officialExposure||{})){
   const count=Core.officialCount(o,scope,ds.length);if(count===null)continue;
-  const p=Core.resolve(o,identityPool()),name=displayName(p,bySurname),key=norm(name);m.set(key,{name,count,official:true});
+  const p=Core.resolve(o,identityPool()),name=displayName(p),key=norm(name);if(key)m.set(key,{name,count,official:true});
  }
  return [...m.values()].map(x=>({...x,pct:ds.length?100*x.count/ds.length:0})).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))
 }
-function comboStats(ds){const m=new Map(),bySurname=scopedNameMap(ds);ds.forEach(d=>{const n=[...new Set((d.players||[]).map(p=>displayName(p,bySurname)).filter(Boolean))].sort();for(let i=0;i<n.length;i++)for(let j=i+1;j<n.length;j++){const k=n[i]+" + "+n[j];m.set(k,(m.get(k)||0)+1)}});return [...m].map(([name,count])=>({name,count,pct:ds.length?100*count/ds.length:0})).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))}
+function comboStats(ds){const m=new Map();ds.forEach(d=>{const n=[...new Set((d.players||[]).map(p=>displayName(p)).filter(Boolean))].sort();for(let i=0;i<n.length;i++)for(let j=i+1;j<n.length;j++){const k=n[i]+" + "+n[j];m.set(k,(m.get(k)||0)+1)}});return [...m].map(([name,count])=>({name,count,pct:ds.length?100*count/ds.length:0})).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))}
 function empty(){return '<div class="empty">No completed drafts captured for this scope yet.</div>'}
 function render(){
- const ds=filtered(),ps=playerStats(ds),cs=comboStats(ds),bySurname=scopedNameMap(ds);$("draftCount").textContent=ds.length;$("playerCount").textContent=ps.length;$("comboCount").textContent=cs.length;const q=$("search").value.toLowerCase();
- if(activeTab==="drafts"){$("view").innerHTML=ds.length?ds.map(d=>`<div class="row"><div><b>${esc(d.contest)}</b><br><small>${esc((d.players||[]).map(p=>displayName(p,bySurname)).join(", "))}</small></div><div></div><div class="num">${new Date(d.capturedAt).toLocaleDateString()}</div></div>`).join(""):empty();return}
+ const ds=filtered(),ps=playerStats(ds),cs=comboStats(ds);$("draftCount").textContent=ds.length;$("playerCount").textContent=ps.length;$("comboCount").textContent=cs.length;const q=$("search").value.toLowerCase();
+ if(activeTab==="drafts"){$("view").innerHTML=ds.length?ds.map(d=>`<div class="row"><div><b>${esc(d.contest)}</b><br><small>${esc((d.players||[]).map(p=>displayName(p)).filter(Boolean).join(", ")+(d.players.some(p=>!displayName(p))?' · Full names syncing…':''))}</small></div><div></div><div class="num">${new Date(d.capturedAt).toLocaleDateString()}</div></div>`).join(""):empty();return}
  const rows=(activeTab==="players"?ps:cs).filter(x=>x.name.toLowerCase().includes(q));$("view").innerHTML=rows.length?rows.map(x=>`<div class="row"><div><b>${esc(x.name)}</b><div class="bar"><i style="width:${Math.min(100,x.pct)}%"></i></div></div><div class="num">${x.count}/${ds.length}</div><div class="pct">${x.pct.toFixed(1)}%</div></div>`).join(""):empty()
 }
 async function readStorage(scopeOverride=null){
@@ -90,15 +82,15 @@ async function readStorage(scopeOverride=null){
  if(!d.exposureScope||d.exposureScope.sport!==chosen.sport||d.exposureScope.contest!==chosen.contest)updates.exposureScope=chosen;
  if(d.lastSelectedContest!==chosen.contest)updates.lastSelectedContest=chosen.contest;
  if(Object.keys(updates).length)await chrome.storage.local.set(updates);
- const n=filtered().length;status(n?"Ready · "+n+" drafts tracked":"No drafts captured yet","ok");return d;
+ showStatus();return d;
 }
 async function load(){
  await readStorage();
  try{const [tab]=await chrome.tabs.query({active:true,currentWindow:true});if(tab?.id){const result=await chrome.tabs.sendMessage(tab.id,{type:"NUKE_FORCE_SCAN"});await readStorage(result?.scope||null)}}catch{}
 }
-$("sport").addEventListener("change",async()=>{buildFilters($("sport").value,"ALL");await persist();render();status("Ready · "+filtered().length+" drafts tracked","ok")});
-$("contest").addEventListener("change",async()=>{await persist();render();status("Ready · "+filtered().length+" drafts tracked","ok")});
+$("sport").addEventListener("change",async()=>{buildFilters($("sport").value,"ALL");await persist();render();showStatus()});
+$("contest").addEventListener("change",async()=>{await persist();render();showStatus()});
 $("search").addEventListener("input",render);$("refresh").addEventListener("click",load);
 document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");activeTab=b.dataset.tab;render()}));
-chrome.storage.onChanged.addListener(async(ch,a)=>{if(a!=="local")return;if(ch.drafts||ch.officialExposure||ch.playerUniverse)await readStorage()});
+chrome.storage.onChanged.addListener(async(ch,a)=>{if(a!=="local")return;if(ch.drafts||ch.officialExposure||ch.playerUniverse||ch.completedNameSync)await readStorage()});
 load();

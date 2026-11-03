@@ -42,12 +42,13 @@
  function player(raw){
   const p=raw?.player||raw?.appearance?.player||raw?.appearance||raw||{};
   const name=clean(p.full_name||p.fullName||p.player_name||[p.first_name||p.firstName,p.last_name||p.lastName].filter(Boolean).join(' ')||p.name||raw?.player_name||raw?.name);
-  const ids=[p.player_id,p.playerId,p.id,raw?.player_id,raw?.playerId,raw?.appearance_id,raw?.appearanceId,raw?.id,...(p.ids||[])].filter(Boolean).map(String);
-  return {...raw,name,ids:[...new Set(ids)],id:String(p.player_id||p.playerId||raw?.player_id||raw?.playerId||p.id||raw?.id||''),pos:clean(p.slotName||p.position||p.pos||raw?.pos).toUpperCase(),team:clean(p.teamName||p.team_name||p.team?.name||p.team?.abbr||p.team||raw?.team),sport:clean(p.sport||raw?.sport).toUpperCase()};
+  const appearance=raw?.appearance||{};
+  const ids=[p.player_id,p.playerId,p.id,raw?.player_id,raw?.playerId,raw?.appearance_id,raw?.appearanceId,appearance.id,appearance.player_id,appearance.playerId,raw?.id,...(p.ids||[]),...(raw?.ids||[])].filter(Boolean).map(String);
+  return {...raw,name,ids:[...new Set(ids)],id:String(p.player_id||p.playerId||raw?.player_id||raw?.playerId||p.id||raw?.id||''),pos:clean(p.slotName||p.position?.name||p.position||p.pos||appearance.slotName||appearance.position?.name||appearance.position||raw?.slotName||raw?.pos).toUpperCase(),team:clean(p.teamName||p.team_name||p.team?.name||p.team?.abbr||p.team||appearance.team?.name||appearance.team?.abbr||raw?.team),sport:clean(p.sport||raw?.sport).toUpperCase()};
  }
  function catalog(seed=[],universe={},drafts=[],official={}){
   const m=new Map();
-  const add=(raw,rank=Infinity)=>{const p=player(raw);if(!p.name.includes(' '))return;const k=norm(p.name),old=m.get(k)||{};const oldRank=Number.isFinite(Number(old._rank))?Number(old._rank):Infinity,rawRank=Number.isFinite(Number(p._rank))?Number(p._rank):Infinity,nextRank=Math.min(oldRank,rawRank,rank);m.set(k,{...old,...p,pos:p.pos||old.pos||'',team:p.team||old.team||'',sport:p.sport||old.sport||'',ids:[...new Set([...(old.ids||[]),...p.ids])],_rank:nextRank})};
+  const add=(raw,rank=Infinity)=>{const p=player(raw);if(!p.name.includes(' ')||p.unresolved||p.identityPending)return;const k=norm(p.name),old=m.get(k)||{};const oldRank=Number.isFinite(Number(old._rank))?Number(old._rank):Infinity,rawRank=Number.isFinite(Number(p._rank))?Number(p._rank):Infinity,nextRank=Math.min(oldRank,rawRank,rank);m.set(k,{...old,...p,pos:p.pos||old.pos||'',team:p.team||old.team||'',sport:p.sport||old.sport||'',ids:[...new Set([...(old.ids||[]),...p.ids])],_rank:nextRank})};
   seed.forEach((x,i)=>add(x,i+1));Object.values(universe).forEach(x=>add(x));drafts.forEach(d=>(d.players||[]).forEach(p=>add({...p,sport:p.sport||d.sport})));Object.values(official).forEach(x=>add(x));return [...m.values()];
  }
  function candidates(raw,pool){
@@ -91,6 +92,7 @@
   const score=sol=>{let s=sol.reduce((n,p)=>n+rank(p),0);const qb=sol.find(p=>p.pos==='QB');if(qb?.team)for(const p of sol)if(['WR','TE'].includes(p.pos)&&norm(p.team)===norm(qb.team))s-=25;return s};
   const scored=solutions.map(sol=>({sol,score:score(sol)})).sort((a,b)=>a.score-b.score);
   return base.map((fallback,i)=>{
+   if(src[i].identityPending&&candidates(src[i],pool).length!==1)return fallback;
    const groups=new Map();
    for(const x of scored){const pick=x.sol[i],k=norm(pick.name),old=groups.get(k);if(!old||x.score<old.score)groups.set(k,{pick,score:x.score})}
    const choices=[...groups.values()].sort((a,b)=>a.score-b.score);
@@ -102,7 +104,20 @@
    return fallback;
   });
  }
- const label=p=>p.unresolved?`${p.name} (identity unconfirmed)`:p.name;
+ // Compare complete rosters without assuming that the summary's order is by
+ // position. Two Williams picks must match two distinct full player names.
+ function sameRoster(summary,full){
+  if(!summary?.length||summary.length!==full?.length)return false;
+  const options=summary.map(raw=>full.map((p,i)=>({p:player(p),i})).filter(({p})=>{
+   const a=player(raw),b=p;
+   if(a.ids.length&&b.ids.some(id=>a.ids.includes(id)))return true;
+   const key=norm(a.name);return key&&(key===norm(b.name)||aliases(b.name).includes(key));
+  }).map(x=>x.i));
+  const order=options.map((_,i)=>i).sort((a,b)=>options[a].length-options[b].length),used=new Set();
+  const walk=n=>{if(n===order.length)return true;for(const i of options[order[n]])if(!used.has(i)){used.add(i);if(walk(n+1))return true;used.delete(i)}return false};
+  return walk(0);
+ }
+ const label=p=>p.unresolved?'Full name syncing…':p.name;
  function officialCount(entry,scope,total){return sameScope(entry?.scope,scope)&&Number(entry.total)===total&&total>0&&Number.isFinite(Number(entry.count))&&entry.count>=0&&entry.count<=total?Number(entry.count):null}
  function displayDrafts(drafts,pool){
   const out=[],byId=new Set(),synthetic=new Map();
@@ -112,6 +127,6 @@
   const stable=new Set(out.map(d=>JSON.stringify([d.sport,d.contest,...d.players.map(p=>norm(p.name)).sort()])));
   for(const [k,d]of synthetic)if(!stable.has(k))out.push(d);return out;
  }
- const api={clean,norm,aliases,NONE,nflPeriod,contestWeek,currentContest,currentDrafts,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,label,officialCount,displayDrafts};
+ const api={clean,norm,aliases,NONE,nflPeriod,contestWeek,currentContest,currentDrafts,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,sameRoster,label,officialCount,displayDrafts};
  root.NukeExposure=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

@@ -19,19 +19,22 @@ const validContestLabel=name=>!invalidContestLabel(name);
 const isCompletedPage=()=>/\/completed(?:\/|$)/i.test(location.pathname);
 
 function harvestStructured(root){
- const found=[];const seen=new WeakSet();
- const walk=(v,depth=0)=>{if(!v||depth>9)return;if(typeof v!=='object')return;if(seen.has(v))return;seen.add(v);
-  if(Array.isArray(v)){for(const x of v)walk(x,depth+1);return}
-  const contest=clean(v.tournament_name||v.contest_name||v.title||v.name||'');
-  const sport=clean(v.sport_name||v.sport||v.sport_id||'').toUpperCase();
-  const roster=v.players||v.roster||v.draft_picks||v.picks;
-  const draftId=String(v.draft_id||v.draftId||v.entry_id||v.id||'');
-  if(contest&&Array.isArray(roster)&&roster.length>=2){
-   const players=roster.map(p=>Core.resolve(Core.player(p),identityPool())).filter(p=>p.name);
-   if(players.length>=2)found.push({draftId:draftId||[contest,...players.map(p=>norm(p.name)).sort()].join('|'),sport:sport||'UNKNOWN',format:'Daily Draft',contest:contestNorm(contest),players,sourceUrl:location.href,capturedAt:new Date().toISOString()});
+ const found=[],seen=new WeakSet();
+ const walk=(v,depth=0,context={})=>{if(!v||depth>12||typeof v!=='object'||seen.has(v))return;seen.add(v);
+  if(Array.isArray(v)){for(const x of v)walk(x,depth+1,context);return}
+  const t=v.tournament||v.contest;
+  const contest=contestNorm(v.tournament_name||v.contest_name||t?.title||t?.name||context.contest||'');
+  const sport=clean(v.sport_name||v.sport||t?.sport||context.sport||'').toUpperCase();
+  const roster=v.players||v.roster||v.draft_picks||v.draftPicks||v.picks;
+  const draftId=String(v.draft_id||v.draftId||v.entry_id||v.entryId||v.id||'');
+  const title=contest||contestNorm(v.title||v.name||'');
+  if(title&&validContestLabel(title)&&Array.isArray(roster)&&roster.length>=2&&roster.length<=12){
+   const players=roster.map(p=>Core.resolve({...Core.player(p),sport:sport||pageSport()},identityPool()));
+   if(players.every(p=>p.name&&!p.unresolved))found.push({draftId:draftId||[title,...players.map(p=>norm(p.name)).sort()].join('|'),sport:sport||pageSport(),format:'Daily Draft',contest:title,players,source:'structured',identitySource:'structured',sourceUrl:location.href,capturedAt:new Date().toISOString()});
   }
-  for(const x of Object.values(v))walk(x,depth+1);
- };walk(root);return found
+  const next={contest:contest||(!Array.isArray(roster)&&validContestLabel(v.tournament_name||v.contest_name||'')?title:context.contest),sport};
+  for(const x of Object.values(v))walk(x,depth+1,next);
+ };walk(root);return found;
 }
 function harvestOfficialExposureStructured(root){
  const out=[];const seen=new WeakSet();
@@ -106,9 +109,9 @@ function computeStats(){
  const ds=Core.currentDrafts(cached.resolvedDrafts).filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
-  const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
+  const names=[...new Set((d.players||[]).filter(x=>!x.unresolved).map(x=>norm(x.name)).filter(Boolean))];
   for(const name of names)map.set(name,(map.get(name)||0)+1);
-  const display=[...new Set((d.players||[]).map(x=>clean(x.name)).filter(Boolean))];
+  const display=[...new Set((d.players||[]).filter(x=>!x.unresolved).map(x=>clean(x.name)).filter(Boolean))];
   for(let i=0;i<display.length;i++)for(let j=i+1;j<display.length;j++){
    const key=[display[i],display[j]].sort((a,b)=>a.localeCompare(b)).join(' + ');
    pairs.set(key,(pairs.get(key)||0)+1);
@@ -207,25 +210,7 @@ async function hydrate(){
  if(JSON.stringify(repaired)!==JSON.stringify(x.drafts||[]))await safe(()=>chrome.storage.local.set({drafts:repaired}));
  cached.drafts=repaired;cached.sport=x.exposureScope?.sport||x.lastSelectedSport||'ALL';cached.selected=x.exposureScope?.contest||x.lastSelectedContest||'ALL';cached.officialExposure=x.officialExposure||{};cached.playerUniverse=x.playerUniverse||{};computeStats();scopeReady=true;syncNavigation();scheduleRender(0);
 }
-function rosterStrings(){
- const out=[];
- const markers=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&el.offsetParent!==null&&/^\d+(?:\.\d+)?\s*Projected$/i.test(clean(el.textContent)));
- for(const marker of markers){
-  let card=marker.parentElement,roster='';
-  for(let depth=0;depth<7&&card&&card!==document.body;depth++,card=card.parentElement){
-   const lines=(card.innerText||'').split('\n').map(clean).filter(Boolean);
-   const pi=lines.findIndex(x=>/^\d+(?:\.\d+)?\s*Projected$/i.test(x));
-   if(pi<0)continue;
-   for(let j=pi+1;j<Math.min(lines.length,pi+5);j++){
-    const ps=lines[j].split(',').map(clean).filter(Boolean);
-    if(ps.length>=2&&ps.length<=12){roster=lines[j];break}
-   }
-   if(roster)break;
-  }
-  if(roster)out.push(roster);
- }
- return out;
-}
+function rosterStrings(){return globalThis.NukeCompletedNames?.cards().map(x=>x.roster)||[]}
 function detectCompletedContest(){
  const labels=[...document.querySelectorAll('*')].filter(el=>el.childElementCount===0&&/^Your teams?$/i.test(clean(el.textContent)));
  for(const label of labels){
@@ -253,15 +238,20 @@ function detectSport(){
  const rules=[['NFL',/\bNFL\b|\bQB\b.*\bRB\b.*\bWR\b/i],['NBA',/\bNBA\b|\bPG\b.*\bSG\b.*\bSF\b/i],['MLB',/\bMLB\b|\bP\b.*\bOF\b/i],['NHL',/\bNHL\b|\bC\b.*\bLW\b.*\bRW\b/i],['PGA',/\bPGA\b|\bGOLF\b/i],['MMA',/\bMMA\b|\bUFC\b/i],['WNBA',/\bWNBA\b/i],['CFB',/\bCFB\b|COLLEGE FOOTBALL/i],['CBB',/\bCBB\b|COLLEGE BASKETBALL/i],['SOCCER',/\bSOCCER\b|\bEPL\b|\bMLS\b/i]];
  for(const [s,re] of rules)if(re.test(text))return s;return 'UNKNOWN';
 }
-async function captureCompleted(){
+let completedCapturePromise=null;
+function captureCompleted(){
+ if(completedCapturePromise)return completedCapturePromise;
+ completedCapturePromise=captureCompletedImpl().finally(()=>{completedCapturePromise=null});return completedCapturePromise;
+}
+async function captureCompletedImpl(){
  if(!isCompletedPage())return {ok:false,reason:'not_completed'};
- const rosters=rosterStrings(); if(!rosters.length)return {ok:false,reason:'no_rosters'};
+ const cards=globalThis.NukeCompletedNames?.cards()||[],rosters=cards.map(x=>x.roster); if(!rosters.length)return {ok:false,reason:'no_rosters'};
  const contest=detectCompletedContest(); if(!contest||!validContestLabel(contest))return {ok:false,reason:'no_contest'}; const sport=detectSport();
- const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{}}));
+ const stored=await safe(()=>chrome.storage.local.get({drafts:[],playerUniverse:{},officialExposure:{},completedFullNames:{}}));
  const current=stored?.drafts||[],universe=stored?.playerUniverse||cached.playerUniverse||{},official=stored?.officialExposure||cached.officialExposure||{};
- const expand=raw=>Core.resolve({name:raw,sport},identityPool()).name;
  const fp=players=>players.map(p=>aliasKeys(p.name).at(-1)||norm(p.name)).sort().join('|');
- const parsed=rosters.map(raw=>raw.split(',').map(clean).filter(Boolean).map(name=>({name:expand(name)}))).filter(players=>players.length>=2);
+ const summaries=cards.map(x=>x.players);
+ const parsed=summaries.map(players=>Core.resolveRoster(players.map(p=>Core.candidates({...p,sport},identityPool()).length===1?p:{...p,identityPending:true}),identityPool(),sport)).filter(players=>players.length>=2);
  const oldDom=current.filter(d=>d.contest===contest&&['completed-dom','completed-card-v2'].includes(d.source));
  // Do not replace a more complete prior snapshot with an early partial SPA render.
  if(oldDom.length&&parsed.length<oldDom.length)return {ok:false,reason:'partial_rosters',rosters:parsed.length,previous:oldDom.length};
@@ -283,16 +273,23 @@ async function captureCompleted(){
  }
  const seen=new Map(),drafts=[...base],routeKey=location.pathname.replace(/[^a-z0-9]+/gi,'_').slice(-120);
  const hash=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)};
- for(const players of parsed){
-  const fingerprint=fp(players),occ=(seen.get(fingerprint)||0)+1;seen.set(fingerprint,occ);
-  if(occ<=(stableCounts.get(fingerprint)||0))continue;
+ for(const [cardIndex,summary] of summaries.entries()){
+  let players=parsed[cardIndex];
+  const fingerprint=fp(summary),occ=(seen.get(fingerprint)||0)+1;seen.set(fingerprint,occ);
   // No pipe in this ID: Core treats each card instance as a real distinct entry,
   // so two identical six-player lineups count as two drafts.
   const draftId='completed:'+hash(routeKey+':'+contest)+':'+hash(fingerprint)+':'+occ;
-  drafts.push({draftId,sport,format:'Daily Draft',contest,players,sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'completed-card-v2'});
+  cards[cardIndex].card.dataset.nukeCompletedId=draftId;
+  const exact=stored?.completedFullNames?.[draftId];
+  const previous=oldDom.find(d=>d.draftId===draftId&&d.identitySource==='completed-detail');
+  const full=exact&&Core.sameScope(exact.scope,{sport,contest})&&Core.sameRoster(summary,exact.players)?exact.players:previous&&Core.sameRoster(summary,previous.players)?previous.players:null;
+  if(full)players=full;
+  if(occ<=(stableCounts.get(fingerprint)||0))continue;
+  drafts.push({draftId,sport,format:'Daily Draft',contest,players,summaryPlayers:summary,identitySource:full?'completed-detail':'summary',sourceUrl:location.href,capturedAt:new Date().toISOString(),source:'completed-card-v2'});
  }
  await safe(()=>chrome.storage.local.set({drafts,exposureScope:{sport,contest},activePageScope:{sport,contest},lastSelectedContest:contest,lastCompletedSync:{contest,sport,rosters:parsed.length,at:Date.now()}}));
  cached.drafts=drafts;activePageScope={sport,contest};cached.sport=sport;cached.selected=contest;computeStats();
+ globalThis.NukeCompletedNames?.queue(captureCompleted);
  return {ok:true,contest,sport,rosters:parsed.length,total:Core.displayDrafts(drafts,identityPool()).filter(d=>d.contest===contest&&String(d.sport||'').toUpperCase()===String(sport).toUpperCase()).length};
 }
 function playerPoolRoot(){
@@ -718,7 +715,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 });
 chrome.runtime.onMessage.addListener((msg,sender,send)=>{
  if(msg?.type==='NUKE_FORCE_SCAN'){
-  (async()=>{await hydrate();const scope=syncNavigation();const completed=await captureCompleted();await captureOfficialExposure();send({ok:true,total:cached.drafts.length,scope,completed})})();
+  (async()=>{await hydrate();const scope=syncNavigation();const completed=await captureCompleted();await globalThis.NukeCompletedNames?.sync(captureCompleted,{force:true});await captureOfficialExposure();send({ok:true,total:cached.drafts.length,scope,completed})})();
   return true;
  }
 });
