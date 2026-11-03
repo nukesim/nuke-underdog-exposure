@@ -21,11 +21,11 @@ function validContestName(name){
  return true;
 }
 const validChoice=x=>x===Core?.NONE||x==='ALL'||validContestName(x);
-const cleanScope=s=>s&&typeof s==='object'&&!validChoice(s.contest)?{...s,contest:Core?.NONE||'__NO_TOURNAMENT__'}:s;
+const cleanScope=s=>s&&typeof s==='object'&&(!validChoice(s.contest)||!Core.currentContest(s))?{...s,contest:Core?.NONE||'__NO_TOURNAMENT__'}:s;
 const sanitizeValues=values=>{
  if(!values||typeof values!=='object')return values;
  const out={...values};
- if(Array.isArray(out.knownTournaments))out.knownTournaments=out.knownTournaments.filter(x=>validContestName(x?.contest));
+ if(Array.isArray(out.knownTournaments))out.knownTournaments=out.knownTournaments.filter(x=>validContestName(x?.contest)&&Core.currentContest(x));
  if('activePageScope'in out)out.activePageScope=cleanScope(out.activePageScope);
  if('exposureScope'in out)out.exposureScope=cleanScope(out.exposureScope);
  if('lastSelectedContest'in out&&!validChoice(out.lastSelectedContest))out.lastSelectedContest=Core?.NONE||'__NO_TOURNAMENT__';

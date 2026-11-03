@@ -2,6 +2,15 @@
 
 Chrome extension for tracking daily draft exposure by sport and tournament.
 
+## v0.9.23
+
+- Updated to the supplied Week 9 Battle Royale CSV: 550 player identities, current ADPs, positions, teams, and player/appearance IDs.
+
+- Stack highlighting uses live draft-room position and team labels, including players missing from the seed catalog or whose team changed.
+- QB stack signals work before the first completed draft and clear when the roster changes.
+- The NFL workspace rolls forward each Tuesday in US Central time. Past weeks disappear from tournament choices and current exposure totals; stored draft history remains intact.
+- Confirmed current tournaments are selectable with zero completed entries. An empty or unselected tournament never borrows another tournament's exposure.
+
 ## v0.9.0
 
 - Full player names from structured Underdog player data, with player and appearance IDs retained.

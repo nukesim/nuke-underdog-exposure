@@ -2,11 +2,14 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const Core=require('../exposure-core');
 require('../player-catalog');
-const pool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG);
+// Fixed historical identities keep older roster regressions independent of weekly slates.
+const historical=require('./historical-catalog.json');
+const pool=Core.catalog(historical).map(p=>({...p,_rank:historical.find(x=>x.name===p.name)._rank}));
+const currentPool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG);
 const scope4={sport:'NFL',contest:'Battle Royale - Week 4'},scope5={sport:'NFL',contest:'Battle Royale - Week 5'};
-test('all 530 current-week CSV identities resolve by stable and appearance IDs',()=>{
- assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,530);
- for(const p of globalThis.NUKE_PLAYER_CATALOG)for(const id of p.ids)assert.equal(Core.resolve({id,name:p.name.split(' ').at(-1)},pool).name,p.name);
+test('all 550 current-week CSV identities resolve by stable and appearance IDs',()=>{
+ assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,550);
+ for(const p of globalThis.NUKE_PLAYER_CATALOG)for(const id of p.ids)assert.equal(Core.resolve({id,name:p.name.split(' ').at(-1)},currentPool).name,p.name);
 });
 test('structured API joins snake_case and camelCase names',()=>{
  assert.equal(Core.player({first_name:'Darnell',last_name:'Washington'}).name,'Darnell Washington');
@@ -17,7 +20,7 @@ test('shared surnames require identity or position/team evidence',()=>{
  for(const name of ['Washington','Henry','Allen','Wilson','Brown'])assert.equal(Core.resolve({name,sport:'NFL'},pool).unresolved,true);
  assert.equal(Core.resolve({name:'Washington',pos:'TE',sport:'NFL'},pool).name,'Darnell Washington');
  assert.equal(Core.resolve({name:'Henry',pos:'TE',sport:'NFL'},pool).name,'Hunter Henry');
- assert.equal(Core.resolve({name:'Allen',pos:'WR',sport:'NFL'},pool).name,'Keenan Allen');
+ assert.equal(Core.resolve({name:'Allen',pos:'WR',sport:'NFL'},pool).unresolved,true); // Keenan and Cyrus share this position.
  assert.equal(Core.resolve({name:'Allen',pos:'RB',sport:'NFL'},pool).unresolved,true);
  assert.equal(Core.resolve({name:'Allen',team:'New York Jets',sport:'NFL'},pool).name,'Braelon Allen');
  assert.equal(Core.resolve({name:'Allen',team:'Imaginary Team',sport:'NFL'},pool).unresolved,true);

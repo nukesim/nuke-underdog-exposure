@@ -19,18 +19,16 @@ const visible=el=>!!el&&el.isConnected&&el.getClientRects().length>0;
 function selectedScope(data,drafts){
  let sport=String(data.exposureScope?.sport||data.activePageScope?.sport||'NFL').toUpperCase();
  if(!sport||sport==='ALL')sport='NFL';
- const real=[...new Set(drafts.filter(d=>String(d.sport||'').toUpperCase()===sport).map(d=>d.contest).filter(Boolean))];
- const choices=[data.exposureScope?.contest,data.activePageScope?.contest,data.lastSelectedContest].filter(x=>x&&x!==NONE&&x!=='ALL');
- let contest=choices.find(x=>real.includes(x))||NONE;
- if(contest===NONE&&real.length===1)contest=real[0];
+ const choices=[data.exposureScope?.contest,data.activePageScope?.contest,data.lastSelectedContest].filter(x=>x&&x!==NONE&&Core.currentContest({sport,contest:x}));
+ const contest=choices[0]||NONE;
  return {sport,contest};
 }
 
 function buildModel(data){
- const drafts=(data.drafts||[]).filter(d=>d&&Array.isArray(d.players));
+ const drafts=Core.currentDrafts(data.drafts||[]).filter(d=>d&&Array.isArray(d.players));
  const scope=selectedScope(data,drafts);
  const pool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],data.playerUniverse||{},drafts,data.officialExposure||{});
- const resolved=Core.displayDrafts(drafts,pool).filter(d=>(scope.sport==='ALL'||String(d.sport||'').toUpperCase()===scope.sport)&&(scope.contest==='ALL'||scope.contest===NONE||d.contest===scope.contest));
+ const resolved=Core.displayDrafts(drafts,pool).filter(d=>Core.matchesScope(d,scope));
 
  const surnameFull=new Map();
  for(const d of resolved)for(const p of (d.players||[])){
@@ -127,6 +125,32 @@ function rosterRoot(){
   rosterRootCache=best;return best;
  }catch{return null}
 }
+// Draft-room labels are authoritative. The seed catalog can omit bye-week
+// players or contain a former team; neither should break a live stack.
+function liveMeta(el,root,metas,isRoster=false){
+ const raw=(el.textContent||'').replace(/\s+/g,' ').trim();
+ const saved=metas.get(norm(raw));
+ if(!saved&&(!/^[A-Z][A-Za-z'.’\-]+(?: [A-Za-z'.’\-]+){1,5}$/.test(raw)||/\bvs\b/i.test(raw)))return null;
+ let box=el.parentElement,match=null,pos='',team='';
+ for(let depth=0;depth<6&&box&&box!==root;depth++,box=box.parentElement){
+  const text=(box.innerText||box.textContent||'').replace(/\s+/g,' ').trim();
+  if(text.length>450)break;
+  match=text.match(/\b([A-Z]{2,3})\s*(?:vs\.?|@)\s*([A-Z]{2,3})\b/i);
+  if(!match)continue;
+  team=match[1].toUpperCase();
+  pos=text.match(/\b(QB|RB|WR|TE)\d*\b/)?.[1]||'';
+  break;
+ }
+ if(isRoster&&!pos){
+  for(const heading of root.querySelectorAll('h2,h3,h4,span,p,div')){
+   if(heading.childElementCount||!visible(heading))continue;
+   const label=(heading.textContent||'').trim();
+   if(/^(QB|RB|WR|TE)$/.test(label)&&(heading.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING))pos=label;
+  }
+ }
+ if(!saved&&(!team||!pos))return null;
+ return {...saved,name:saved?.name||raw,pos:pos||saved?.pos||saved?.position||'',teamAbbr:team||saved?.teamAbbr||saved?.team||''};
+}
 function refreshStackTargets(force=false){
  const now=Date.now();if(!force&&now-lastStackScan<500)return;
  lastStackScan=now;
@@ -135,7 +159,7 @@ function refreshStackTargets(force=false){
   const map=catalogMetaMap();
   for(const el of root.getElementsByTagName('*')){
    if(!visible(el)||el.children.length)continue;
-   const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),p=map.get(norm(raw));if(!p)continue;
+   const p=liveMeta(el,root,map,true);if(!p)continue;
    const pos=String(p.pos||p.position||'').toUpperCase(),team=String(p.teamAbbr||p.team||'').toUpperCase();
    if(!names.some(x=>norm(x)===norm(p.name)))names.push(p.name);
    if(team)allTeams.add(team);
@@ -197,7 +221,7 @@ function badgeText(name){
 function colorFor(count,total){if(!total||count===0)return '#94a3b8';const pct=count/total;if(pct>=.4)return '#facc15';if(pct>=.2)return '#38bdf8';return '#a7f3d0'}
 
 function renderBadges(){
- if(!isDraftPage()||!model.total)return;
+ if(!isDraftPage())return;
  const root=findPlayerRoot();if(!root)return;
  refreshStackTargets();
  const metas=catalogMetaMap(),names=catalogNameMap();
@@ -208,7 +232,7 @@ function renderBadges(){
  }
  for(const el of root.querySelectorAll('span,p,div')){
   if(el.classList?.contains('nuke-active-own')||el.childElementCount||!visible(el))continue;
-  const raw=(el.textContent||'').replace(/\s+/g,' ').trim(),key=norm(raw),meta=metas.get(key),full=names.get(key);if(!full)continue;
+  const meta=liveMeta(el,root,metas),full=meta?.name;if(!full)continue;
   let b=el.nextElementSibling;
   if(!b?.classList?.contains('nuke-active-own')){
    b=document.createElement('span');b.className='nuke-active-own';b.dataset.nukeActiveOwn='1';el.insertAdjacentElement('afterend',b);

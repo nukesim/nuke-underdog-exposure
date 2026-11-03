@@ -19,19 +19,19 @@ function validContestName(name){
 const validContestChoice=x=>x===Core.NONE||x==="ALL"||validContestName(x);
 const norm=s=>String(s||"").trim().toLowerCase().replace(/[’]/g,"'").replace(/[^a-z0-9'. -]/g,"").replace(/\s+/g," ");
 const tokens=s=>norm(s).split(" ").filter(Boolean);
-function sports(){return ["ALL",...[...new Set(allDrafts.map(d=>d.sport).filter(Boolean))].sort()]}
+function sports(){return ["ALL",...[...new Set([...allDrafts,...knownTournaments,...(activePageScope?[activePageScope]:[])].map(d=>d.sport).filter(Boolean))].sort()]}
 function buildFilters(prefSport,prefContest){
  const availableSports=sports();
  const wantedSport=prefSport||$("sport").value||"ALL";
  const sport=availableSports.includes(wantedSport)?wantedSport:(availableSports.includes("NFL")?"NFL":"ALL");
  $("sport").innerHTML=availableSports.map(x=>`<option value="${esc(x)}" ${x===sport?"selected":""}>${esc(x==="ALL"?"ALL SPORTS":x)}</option>`).join("");
- // Tournament choices come ONLY from actual captured completed drafts. Never from
- // arbitrary Underdog headings/API labels. This permanently prevents QB/RB/WR,
- // countdowns, lobby categories, boosts, etc. from appearing in this dropdown.
+ // Current completed drafts plus confirmed current tournaments allow a new
+ // tournament to start at zero. UI labels and archived weeks stay excluded.
  const valid=allDrafts.filter(d=>validContestName(d?.contest)&&(sport==="ALL"||d.sport===sport));
- const contests=[Core.NONE,"ALL",...[...new Set(valid.map(d=>d.contest))].sort()];
+ const confirmed=[...knownTournaments,activePageScope].filter(x=>x&&validContestName(x.contest)&&Core.currentContest(x)&&(sport==="ALL"||x.sport===sport));
+ const contests=[Core.NONE,"ALL",...[...new Set([...valid.map(d=>d.contest),...confirmed.map(x=>x.contest)])].sort()];
  const current=$("contest").value;
- const requested=contests.includes(prefContest)?prefContest:contests.includes(current)?current:contests.length===3?contests[2]:Core.NONE;
+ const requested=contests.includes(prefContest)?prefContest:contests.includes(current)&&current!==Core.NONE?current:contests.length===3?contests[2]:Core.NONE;
  $("contest").innerHTML=contests.map(x=>`<option value="${esc(x)}" ${x===requested?"selected":""}>${esc(x===Core.NONE?"CHOOSE TOURNAMENT":x==="ALL"?"ALL TOURNAMENTS":x)}</option>`).join("");
 }
 async function persist(){await chrome.storage.local.set({exposureScope:{sport:$("sport").value||"ALL",contest:$("contest").value||Core.NONE},lastSelectedContest:$("contest").value||Core.NONE})}
@@ -74,10 +74,14 @@ function render(){
 }
 async function readStorage(scopeOverride=null){
  const d=await chrome.storage.local.get({drafts:[],exposureScope:{sport:"ALL",contest:Core.NONE},lastSelectedContest:Core.NONE,playerUniverse:{},officialExposure:{},knownTournaments:[],activePageScope:null});
- allDrafts=(d.drafts||[]).filter(x=>validContestName(x?.contest));playerUniverse=d.playerUniverse||{};officialExposure=d.officialExposure||{};
- // Keep the legacy knownTournaments key clean, but never use it to build UI choices.
- knownTournaments=[...new Map(allDrafts.map(x=>[JSON.stringify([x.sport,x.contest]),{sport:x.sport,contest:x.contest}])).values()];
- activePageScope=validContestName(d.activePageScope?.contest)?d.activePageScope:null;
+ allDrafts=Core.currentDrafts(d.drafts||[]).filter(x=>validContestName(x?.contest));playerUniverse=d.playerUniverse||{};officialExposure=d.officialExposure||{};
+ // Unnumbered tournaments need current entries or a fresh page observation;
+ // a saved Week 8 "The Hurry Up" scope alone must not keep that choice alive.
+ const page=d.activePageScope;
+ const currentPage=page&&(allDrafts.some(x=>Core.sameScope(x,page))||Core.currentDrafts([{...page,capturedAt:page.observedAt}]).length);
+ activePageScope=currentPage&&validContestName(page.contest)&&Core.currentContest(page)?page:null;
+ const confirmed=(d.knownTournaments||[]).filter(x=>validContestName(x?.contest)&&Core.currentContest(x)&&Core.contestWeek(x.contest));
+ knownTournaments=[...new Map([...allDrafts,...confirmed,...(activePageScope?[activePageScope]:[])].map(x=>[JSON.stringify([x.sport,x.contest]),{sport:x.sport,contest:x.contest}])).values()];
  const raw=scopeOverride||d.exposureScope||{sport:"ALL",contest:d.lastSelectedContest||Core.NONE};
  buildFilters(raw?.sport||"ALL",raw?.contest||Core.NONE);render();
  const updates={};

@@ -103,7 +103,7 @@ function canonicalHistoricalName(name){
 function computeStats(){
  cached.identityPool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG||[],cached.playerUniverse,cached.drafts,cached.officialExposure);
  cached.resolvedDrafts=Core.displayDrafts(cached.drafts,cached.identityPool);
- const ds=cached.resolvedDrafts.filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
+ const ds=Core.currentDrafts(cached.resolvedDrafts).filter(d=>(cached.sport==='ALL'||(d.sport||'UNKNOWN')===cached.sport)&&(cached.selected==='ALL'||d.contest===cached.selected));
  const map=new Map(),pairs=new Map();
  for(const d of ds){
   const names=[...new Set((d.players||[]).map(x=>norm(x.name)).filter(Boolean))];
@@ -177,6 +177,7 @@ function syncActiveScope(force=false){
  if(!scope&&changed){scope={sport:pageSport(),contest:Core.NONE}}
  if(!scope&&!force)return activePageScope;
  if(!scope)scope=activePageScope||{sport:pageSport(),contest:Core.NONE};
+ if(!inherited&&validContestLabel(scope.contest))scope={...scope,observedAt:new Date().toISOString()};
  lastRoute=route;
  if(!Core.sameScope(scope,activePageScope)||changed||force){activePageScope=scope;cached.sport=scope.sport;cached.selected=scope.contest;computeStats();safe(()=>chrome.storage.local.set({activePageScope:scope,exposureScope:scope,knownTournaments}));scheduleRender(0)}
  return scope;
@@ -195,7 +196,7 @@ document.addEventListener('click',e=>{
 },true);
 function syncNavigation(){
  const route=location.href;if(pendingTournament&&route!==pendingTournament.from&&Date.now()-pendingTournament.at<10000&&/\/(draft|tournament|contest|lobby)\//.test(location.pathname)){
-  const scope=pendingTournament.scope;pendingTournament=null;lastRoute=route;activePageScope=scope;cached.sport=scope.sport;cached.selected=scope.contest;computeStats();safe(()=>chrome.storage.local.set({activePageScope:scope,exposureScope:scope}));scheduleRender(0);return scope;
+  const scope={...pendingTournament.scope,observedAt:new Date().toISOString()};pendingTournament=null;lastRoute=route;activePageScope=scope;cached.sport=scope.sport;cached.selected=scope.contest;computeStats();safe(()=>chrome.storage.local.set({activePageScope:scope,exposureScope:scope}));scheduleRender(0);return scope;
  }
  return syncActiveScope();
 }

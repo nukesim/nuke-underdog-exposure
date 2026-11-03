@@ -5,6 +5,37 @@
  const norm=s=>clean(s).toLowerCase().replace(/’/g,"'").replace(/[^a-z0-9'. -]/g,'');
  const aliases=name=>{const a=norm(name).split(' ').filter(Boolean),out=[norm(name)];for(let i=1;i<a.length;i++)out.push(a.slice(i).join(' '));if(/^(ii|iii|iv|jr\.?|sr\.?)$/.test(a.at(-1)))out.push(a.slice(1,-1).join(' '));return [...new Set(out.filter(Boolean))]};
  const NONE='__NO_TOURNAMENT__';
+ // Roll the NFL daily-draft workspace over on Tuesday in US Central time.
+ // History stays in storage; only the current workspace is filtered.
+ const nflDateFormat=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago'});
+ function nflPeriod(now=new Date()){
+  const day=nflDateFormat.format(new Date(now));
+  const date=new Date(day+'T12:00:00Z');let season=date.getUTCFullYear();
+  if(date.getUTCMonth()<2)season--;
+  const sep=new Date(Date.UTC(season,8,1,12));
+  const firstMonday=1+(8-sep.getUTCDay())%7;
+  const start=new Date(Date.UTC(season,8,firstMonday+1,12));
+  const elapsed=Math.floor((date-start)/604800000);
+  return {season,week:Math.max(1,Math.min(18,elapsed+1)),start,active:elapsed>=0&&elapsed<18};
+ }
+ const contestWeek=name=>Number(String(name||'').match(/\b(?:week|wk)\s*[-:#]?\s*(\d{1,2})\b/i)?.[1]||0);
+ function currentContest(scope,now=new Date()){
+  if(String(scope?.sport||'').toUpperCase()!=='NFL')return true;
+  const period=nflPeriod(now),week=contestWeek(scope?.contest);
+  return !period.active||!week||week>=period.week;
+ }
+ function currentDrafts(drafts,now=new Date()){
+  const period=nflPeriod(now);
+  return (drafts||[]).filter(d=>{
+   if(String(d?.sport||'').toUpperCase()!=='NFL'||!period.active)return true;
+   const week=contestWeek(d.contest)||contestWeek(d.draftId);
+   if(week)return week>=period.week;
+   const captured=new Date(d.capturedAt);
+   if(!Number.isFinite(captured.getTime()))return false;
+   const capturedPeriod=nflPeriod(captured);
+   return capturedPeriod.season===period.season&&capturedPeriod.week>=period.week;
+  });
+ }
  const scopeKey=s=>JSON.stringify([s?.sport||'ALL',s?.contest||NONE]);
  const sameScope=(a,b)=>!!a&&!!b&&scopeKey(a)===scopeKey(b);
  const matchesScope=(d,s)=>(s.sport==='ALL'||d.sport===s.sport)&&(s.contest==='ALL'||d.contest===s.contest);
@@ -81,6 +112,6 @@
   const stable=new Set(out.map(d=>JSON.stringify([d.sport,d.contest,...d.players.map(p=>norm(p.name)).sort()])));
   for(const [k,d]of synthetic)if(!stable.has(k))out.push(d);return out;
  }
- const api={clean,norm,aliases,NONE,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,label,officialCount,displayDrafts};
+ const api={clean,norm,aliases,NONE,nflPeriod,contestWeek,currentContest,currentDrafts,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,label,officialCount,displayDrafts};
  root.NukeExposure=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

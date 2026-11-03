@@ -4,16 +4,17 @@ const root=path.resolve(__dirname,'..'),source=f=>fs.readFileSync(path.join(root
 const week4={sport:'NFL',contest:'Battle Royale - Week 4'},week5={sport:'NFL',contest:'Battle Royale - Week 5'};
 function fixture(url,html,initial){
  const dom=new JSDOM(html,{url,runScripts:'outside-only',pretendToBeVisual:true}),w=dom.window;
+ w.eval("Date=class extends Date{constructor(...args){super(...(args.length?args:['2026-09-29T16:00:00Z']))}static now(){return new Date('2026-09-29T16:00:00Z').getTime()}}");
  Object.defineProperty(w.HTMLElement.prototype,'innerText',{get(){return [...this.childNodes].map(n=>n.nodeType===3?n.textContent:n.innerText||n.textContent).join('\n')},configurable:true});
  Object.defineProperty(w.HTMLElement.prototype,'offsetParent',{get(){return this.parentElement},configurable:true});
  w.observers=[];const Observer=w.MutationObserver;w.MutationObserver=class extends Observer{constructor(fn){super(fn);w.observers.push(this)}};w.store=initial;const changes=[],messages=[];
  w.chrome={storage:{local:{get:async defaults=>({...defaults,...structuredClone(w.store)}),set:async values=>{const changed={};for(const [k,v]of Object.entries(values)){changed[k]={oldValue:w.store[k],newValue:v};w.store[k]=structuredClone(v)}for(const fn of changes)fn(changed,'local')}},onChanged:{addListener:fn=>changes.push(fn)}},runtime:{onMessage:{addListener:fn=>messages.push(fn)}},tabs:{query:async()=>[],sendMessage:async()=>({})}};
- w.eval(source('player-catalog.js'));w.eval(source('exposure-core.js'));return dom;
+ w.NUKE_PLAYER_CATALOG=structuredClone(require('./historical-catalog.json'));w.eval(source('exposure-core.js'));return dom;
 }
 async function until(fn){const deadline=Date.now()+2500;while(!fn()){if(Date.now()>deadline)throw Error('Fixture condition timed out');await new Promise(r=>setTimeout(r,10))}}
 test('actual popup keeps zero-draft Week 5 and resolves names on players/combos/drafts',async()=>{
  const html=source('popup.html').replace(/<script[^>]*><\/script>/g,'');
- const seed=require('node:vm').runInNewContext(source('player-catalog.js')+';NUKE_PLAYER_CATALOG');
+ const seed=require('./historical-catalog.json');
  const id=n=>seed.find(x=>x.name===n).id;
  const initial={drafts:[{draftId:'a',...week4,capturedAt:new Date().toISOString(),players:[{name:'Allen',id:id('Keenan Allen')},{name:'Henry',id:id('Hunter Henry')},{name:'Washington',id:id('Darnell Washington')}]}],exposureScope:week5,knownTournaments:[week4,week5],playerUniverse:{},officialExposure:{allen:{name:'Keenan Allen',count:1,total:1}}};
  const dom=fixture('https://fixture.test/popup',html,initial),w=dom.window,$=s=>w.document.querySelector(s);
@@ -47,7 +48,8 @@ test('actual content script clears stale scope on lobby, detects card click and 
  w.history.pushState({},'', '/draft/old4');w.document.body.innerHTML='<nav>NFL</nav><h2>Battle Royale - Week 4</h2>';
  await until(()=>w.store.exposureScope?.contest===week4.contest);
  w.history.pushState({},'', '/draft/unknown');w.document.body.innerHTML='<nav>NFL</nav>';
- await until(()=>w.store.exposureScope?.contest==='__NO_TOURNAMENT__');
+ // Unlabelled live rooms inherit the last confirmed tournament by design.
+ await until(()=>w.store.exposureScope?.contest===week4.contest);
  assert.equal(w.store.drafts.length,1);
  }finally{w.observers.forEach(x=>x.disconnect());w.close()}
 });
