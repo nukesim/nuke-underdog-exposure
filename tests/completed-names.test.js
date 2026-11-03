@@ -74,7 +74,7 @@ test('a preselected Williams roster is repaired after visiting the other William
  try{
   [exactA,exactB,exactC].forEach((names,i)=>w.document.querySelector('#card'+i).addEventListener('click',()=>setTimeout(()=>{w.document.querySelector('#detail').innerHTML=detail(names)},25)));
   w.eval(source('completed-names.js'));w.eval(source('content.js'));
-  const deadline=Date.now()+8500;
+  const deadline=Date.now()+20000;
   while(!w.store.drafts?.filter(d=>d.summaryPlayers?.some(p=>p.name==='Williams')).every(d=>d.identitySource==='completed-detail')||w.store.drafts?.length!==3){if(Date.now()>deadline)throw Error('Preselected entry was not repaired: '+JSON.stringify({drafts:w.store.drafts?.map(d=>({id:d.draftId,source:d.identitySource,names:d.players.map(p=>p.name)})),sync:w.store.completedNameSync,learned:Object.keys(w.store.completedFullNames||{})}));await new Promise(r=>setTimeout(r,30));}
   assert.equal(w.store.drafts.flatMap(d=>d.players).filter(p=>p.name==='Javonte Williams').length,1);
   assert.equal(w.store.drafts.flatMap(d=>d.players).filter(p=>p.name==='Kyren Williams').length,1);

@@ -211,25 +211,47 @@ function badgeText(name){
 }
 function colorFor(count,total){if(!total||count===0)return '#94a3b8';const pct=count/total;if(pct>=.4)return '#facc15';if(pct>=.2)return '#38bdf8';return '#a7f3d0'}
 
+// Keep native player names and matchups in their original two-line layout.
+// NUKE signals occupy the unused space before the ADP/projection columns.
+function rowIntel(row,nameEl){
+ let rail=Array.from(row.children).find(x=>x.classList.contains('nuke-row-intel'));
+ if(!rail){rail=document.createElement('span');rail.className='nuke-row-intel';row.appendChild(rail)}
+ if(getComputedStyle(row).position==='static')row.classList.add('nuke-intel-relative');
+ row.dataset.nukeIntelRow='1';
+ const rr=row.getBoundingClientRect(),nr=nameEl.getBoundingClientRect();
+ let textRight=nr.right;
+ try{const range=document.createRange();range.selectNodeContents(nameEl);const r=range.getBoundingClientRect();if(r.width)textRight=r.right}catch{}
+ const values=[...row.querySelectorAll('span,p,div')].filter(x=>!rail.contains(x)&&x!==nameEl&&!x.childElementCount&&/^(?:-|\d+(?:\.\d+)?)$/.test((x.textContent||'').trim())).map(x=>x.getBoundingClientRect()).filter(r=>r.width>0&&r.left>textRight+8);
+ const end=values.length?Math.min(...values.map(r=>r.left))-14:rr.right-Math.min(220,rr.width*.33);
+ const space=Math.max(48,end-textRight-16);
+ rail.style.right=Math.max(12,rr.right-end)+'px';
+ rail.style.setProperty('--nuke-intel-space',space+'px');
+ rail.classList.toggle('nuke-intel-compact',space<125);
+ rail.classList.toggle('nuke-intel-tight',space<85);
+ return rail;
+}
+
 function renderBadges(){
  if(!isDraftPage())return;
  const root=findPlayerRoot();if(!root)return;
  refreshStackTargets();
  const metas=catalogMetaMap(),names=catalogNameMap();
  clearStackHighlights(root);
- for(const old of root.querySelectorAll('.nuke-active-own')){
-  const prev=old.previousElementSibling,raw=(prev?.textContent||'').replace(/\s+/g,' ').trim();
-  if(!prev||!names.has(norm(raw)))old.remove();
- }
+ const used=new Set();
+ root.querySelectorAll('.nuke-active-own').forEach(x=>{if(!x.closest('.nuke-row-intel'))x.remove()});
  for(const el of root.querySelectorAll('span,p,div')){
   if(el.classList?.contains('nuke-active-own')||el.childElementCount||!visible(el))continue;
   const meta=liveMeta(el,root,metas),full=meta?.name;if(!full)continue;
-  let b=el.nextElementSibling;
-  if(!b?.classList?.contains('nuke-active-own')){
-   b=document.createElement('span');b.className='nuke-active-own';b.dataset.nukeActiveOwn='1';el.insertAdjacentElement('afterend',b);
+  const row=playerRowFor(el,root);if(!row)continue;
+  const rail=rowIntel(row,el);used.add(rail);rail.dataset.nukePlayer=norm(full);
+  let b=rail.querySelector('.nuke-active-own');
+  if(!b){b=document.createElement('span');b.className='nuke-active-own';b.dataset.nukeActiveOwn='1';rail.appendChild(b)}
+  const count=model.counts.get(norm(full))||0,text=badgeText(full);
+  if(b.textContent!==text){
+   const pct=document.createElement('span');pct.className='nuke-own-percent';pct.textContent=text.split(' · ')[0];
+   const n=document.createElement('span');n.className='nuke-own-count';n.textContent=' · '+count+'/'+model.total;b.replaceChildren(pct,n);
   }
-  const count=model.counts.get(norm(full))||0,text=badgeText(full);if(b.textContent!==text)b.textContent=text;
-  b.title=`NUKE exposure · ${model.scope.sport} · ${model.scope.contest}`;
+  b.title=`Exposure: ${text} completed drafts · ${model.scope.sport} · ${model.scope.contest}`;
   b.style.color=colorFor(count,model.total);
 
   if(meta){
@@ -256,8 +278,7 @@ function renderBadges(){
     dot.className='nuke-team-dot';
     dot.dataset.nukeTeamDot='1';
     dot.title=`TEAMMATE ALREADY DRAFTED · ${team}`;
-    signalAnchor.insertAdjacentElement('afterend',dot);
-    signalAnchor=dot;
+    b.insertAdjacentElement('beforebegin',dot);
    }
 
    // Pre-pick portfolio warning. This does not rank or recommend players; it only
@@ -267,17 +288,21 @@ function renderBadges(){
     const tag=document.createElement('span');
     tag.className='nuke-if-picked nuke-dupe-level-'+Math.min(6,preview.level);
     tag.dataset.nukeIfPicked='1';
-    tag.textContent=previewText(preview.matches,preview.level);
+    const labels=preview.matches.map(shortName),short=labels.slice(0,2).join(' + ')+(labels.length>2?' +'+(labels.length-2):'');
+    const label=document.createElement('span');label.className='nuke-core-names';label.textContent=short+' · ';
+    const level=document.createElement('span');level.className='nuke-core-count';level.textContent=preview.level+'/6';tag.append(label,level);
     tag.title='If drafted: '+preview.matches.concat([full]).join(' + ')+' matched a prior completed lineup';
-    signalAnchor.insertAdjacentElement('afterend',tag);
+    b.title+='\n'+tag.title+' ('+preview.level+'/6)';
+    b.insertAdjacentElement('beforebegin',tag);
    }
   }
  }
+ for(const rail of root.querySelectorAll('.nuke-row-intel'))if(!used.has(rail))rail.remove();
 }
 
 function render(){
  if(!isDraftPage()){
-  document.querySelectorAll('.nuke-active-own').forEach(x=>x.remove());
+  document.querySelectorAll('.nuke-row-intel,.nuke-active-own').forEach(x=>x.remove());
   const panel=document.getElementById('nuke-stable-combo-panel');if(panel)panel.hidden=true;
   document.querySelectorAll('.nuke-team-dot,.nuke-if-picked').forEach(x=>x.remove());
   playerRoot=null;rosterRootCache=null;stackTeams=new Set();draftedTeams=new Set();draftedNames=[];draftedQB=false;draftedQBTeam='';return;
