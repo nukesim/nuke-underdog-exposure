@@ -54,26 +54,14 @@
 .nuke-next-metrics span{display:block!important;color:#6f8799!important;font-size:7px!important;font-weight:800!important;letter-spacing:.25px!important}
 
 
-/* Strong NFL stack target: full player row gets a clean neon-green treatment. */
+/* Stack targets use a quiet green edge; names retain the native typography. */
 .nuke-stack-row{
-  position:relative!important;
-  border-radius:7px!important;
-  background:linear-gradient(90deg,rgba(56,217,150,.14),rgba(56,217,150,.045) 62%,transparent)!important;
-  box-shadow:inset 3px 0 0 #38d996, inset 0 1px 0 rgba(56,217,150,.42), inset 0 -1px 0 rgba(56,217,150,.42), 0 0 10px rgba(56,217,150,.12)!important;
+  border-radius:4px!important;
+  background:linear-gradient(90deg,rgba(52,211,153,.085),rgba(52,211,153,.015) 72%,transparent)!important;
+  box-shadow:inset 2px 0 0 #34d399!important;
 }
-.nuke-stack-row::after{
-  content:""!important;
-  pointer-events:none!important;
-  position:absolute!important;
-  inset:1px!important;
-  border-radius:6px!important;
-  border:1px solid rgba(56,217,150,.32)!important;
-  box-shadow:0 0 8px rgba(56,217,150,.18)!important;
-}
-.nuke-stack-row:hover{
-  background:linear-gradient(90deg,rgba(56,217,150,.20),rgba(56,217,150,.07) 65%,transparent)!important;
-  box-shadow:inset 3px 0 0 #55f0ad, inset 0 1px 0 rgba(85,240,173,.55), inset 0 -1px 0 rgba(85,240,173,.55), 0 0 13px rgba(56,217,150,.20)!important;
-}
+.nuke-stack-row::after{content:none!important}
+.nuke-stack-row:hover{background:rgba(52,211,153,.09)!important}
 
 /* NFL roster-construction intelligence */
 .nuke-roster-intel{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;margin:2px 0 5px!important;padding:6px 8px!important;border:1px solid #21313d!important;border-radius:6px!important;background:#0a1118!important;font-size:9px!important;font-weight:800!important}
@@ -111,7 +99,52 @@
 html.nuke-stable-mode .nuke-exposure-badge,
 html.nuke-stable-mode #nuke-combo-panel{display:none!important}
 
-.nuke-active-own{display:inline-flex!important;align-items:center!important;margin-left:5px!important;padding:1px 4px!important;border:1px solid rgba(148,163,184,.38)!important;border-radius:4px!important;background:#111820!important;font:800 9px/1.15 Arial,sans-serif!important;letter-spacing:.1px!important;white-space:nowrap!important;vertical-align:middle!important;transform:translateY(-1px)!important;z-index:9999!important}
+/* Live row signals stay in one aligned rail, outside the name/matchup flow. */
+.nuke-intel-relative{position:relative!important}
+.nuke-row-intel{
+  position:absolute!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:7px!important;
+  max-width:min(240px,var(--nuke-intel-space,190px))!important;
+  height:24px!important;
+  margin:0!important;
+  padding:0!important;
+  z-index:2!important;
+  white-space:nowrap!important;
+  font-family:Arial,sans-serif!important;
+}
+.nuke-active-own{
+  display:inline-flex!important;
+  align-items:center!important;
+  flex:0 0 auto!important;
+  gap:0!important;
+  height:23px!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+  padding:0 7px!important;
+  border:1px solid rgba(148,163,184,.17)!important;
+  border-radius:5px!important;
+  background:#101922!important;
+  font:700 11px/1 Arial,sans-serif!important;
+  letter-spacing:0!important;
+  white-space:nowrap!important;
+  font-variant-numeric:tabular-nums!important;
+  vertical-align:middle!important;
+  transform:none!important;
+  box-shadow:none!important;
+}
+.nuke-own-count{color:#7d91a5!important;font:500 10px/1 Arial,sans-serif!important;white-space:pre!important}
+.nuke-intel-compact .nuke-own-count{display:none!important}
+.nuke-intel-compact .nuke-core-names{display:none!important}
+.nuke-intel-tight .nuke-core-names{display:none!important}
+.nuke-row-intel.nuke-intel-tight{top:auto!important;bottom:5px!important;height:18px!important;transform:none!important}
+.nuke-intel-tight .nuke-if-picked{display:none!important}
+.nuke-intel-tight .nuke-active-own{height:18px!important;padding:0 5px!important;font-size:10px!important}
+.nuke-row-intel .nuke-team-dot{flex:0 0 auto!important;margin:0!important;width:5px!important;height:5px!important;transform:none!important;box-shadow:none!important}
 
 #nuke-stable-combo-panel{position:fixed!important;z-index:2147483000!important;box-sizing:border-box!important;max-height:222px!important;overflow:hidden!important;padding:10px 12px!important;border:1px solid #283744!important;border-radius:8px!important;background:rgba(13,21,29,.98)!important;color:#fff!important;font:12px/1.3 Arial,sans-serif!important;box-shadow:0 8px 24px rgba(0,0,0,.22)!important;pointer-events:none!important}
 #nuke-stable-combo-panel[hidden]{display:none!important}
@@ -187,20 +220,27 @@ html.nuke-stable-mode #nuke-combo-panel{display:none!important}
 .nuke-if-picked{
   display:inline-flex!important;
   align-items:center!important;
-  margin-left:5px!important;
-  padding:1px 5px!important;
-  border:1px solid #334155!important;
-  border-radius:999px!important;
-  background:rgba(15,23,42,.92)!important;
-  color:#cbd5e1!important;
-  font:900 8px/1.2 Arial,sans-serif!important;
-  letter-spacing:.1px!important;
+  flex:0 1 auto!important;
+  min-width:0!important;
+  height:23px!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+  padding:0 7px!important;
+  border:1px solid rgba(148,163,184,.2)!important;
+  border-radius:5px!important;
+  background:#101922!important;
+  color:#b5c4d4!important;
+  font:600 11px/1 Arial,sans-serif!important;
+  letter-spacing:0!important;
   white-space:nowrap!important;
   vertical-align:middle!important;
-  transform:translateY(-1px)!important;
+  transform:none!important;
+  box-shadow:none!important;
 }
-.nuke-if-picked.nuke-dupe-level-2{border-color:#4ade80!important;color:#86efac!important;background:rgba(74,222,128,.10)!important}
-.nuke-if-picked.nuke-dupe-level-3{border-color:#eab308!important;color:#fde047!important;background:rgba(234,179,8,.10)!important}
-.nuke-if-picked.nuke-dupe-level-4{border-color:#f97316!important;color:#fb923c!important;background:rgba(249,115,22,.11)!important}
+.nuke-core-names{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:pre!important}
+.nuke-core-count{flex:0 0 auto!important;font-weight:700!important;font-variant-numeric:tabular-nums!important}
+.nuke-if-picked.nuke-dupe-level-2{border-color:rgba(74,222,128,.22)!important;color:#8dd9b1!important;background:rgba(74,222,128,.06)!important}
+.nuke-if-picked.nuke-dupe-level-3{border-color:rgba(234,179,8,.28)!important;color:#dbc575!important;background:rgba(234,179,8,.07)!important}
+.nuke-if-picked.nuke-dupe-level-4{border-color:rgba(249,115,22,.3)!important;color:#efae77!important;background:rgba(249,115,22,.08)!important}
 .nuke-if-picked.nuke-dupe-level-5{border-color:#ef4444!important;color:#f87171!important;background:rgba(239,68,68,.14)!important}
 .nuke-if-picked.nuke-dupe-level-6{border-color:#dc2626!important;color:#ff5a5a!important;background:rgba(220,38,38,.18)!important}

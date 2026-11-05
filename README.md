@@ -2,6 +2,11 @@
 
 Chrome extension for tracking daily draft exposure by sport and tournament.
 
+## v0.9.25
+
+- Aligned live exposure and prior-core badges in the empty space before the native stat columns. Player names and matchups retain their original spacing and row height.
+- Increased badge readability, softened stack highlights, and compacted signals on narrow player panels. Exact counts and matched-player details remain available on hover.
+
 ## v0.9.24
 
 - Completed entries capture full first and last names from detailed rosters and exact player/appearance IDs. Shared surnames such as Williams are retained as separate players.
