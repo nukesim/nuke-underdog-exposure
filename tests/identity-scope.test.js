@@ -7,8 +7,8 @@ const historical=require('./historical-catalog.json');
 const pool=Core.catalog(historical).map(p=>({...p,_rank:historical.find(x=>x.name===p.name)._rank}));
 const currentPool=Core.catalog(globalThis.NUKE_PLAYER_CATALOG);
 const scope4={sport:'NFL',contest:'Battle Royale - Week 4'},scope5={sport:'NFL',contest:'Battle Royale - Week 5'};
-test('all 550 current-week CSV identities resolve by stable and appearance IDs',()=>{
- assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,550);
+test('all 482 current-week CSV identities resolve by stable and appearance IDs',()=>{
+ assert.equal(globalThis.NUKE_PLAYER_CATALOG.length,482);
  for(const p of globalThis.NUKE_PLAYER_CATALOG)for(const id of p.ids)assert.equal(Core.resolve({id,name:p.name.split(' ').at(-1)},currentPool).name,p.name);
 });
 test('structured API joins snake_case and camelCase names',()=>{
