@@ -64,11 +64,19 @@
  }
  function merged(p,hit){return {...p,name:hit.name,pos:p.pos||hit.pos,team:p.team||hit.team,sport:p.sport||hit.sport,ids:[...new Set([...p.ids,...(hit.ids||[])])],id:p.id||hit.id,_rank:Number.isFinite(Number(hit._rank))?Number(hit._rank):p._rank,unresolved:false}}
  function resolve(raw,pool){const p=player(raw),hits=candidates(p,pool);if(hits.length!==1)return {...p,unresolved:hits.length>1||!p.name.includes(' ')};return merged(p,hits[0])}
+ // Six picks: QB, RB, WR, WR, TE, and one RB/WR/TE FLEX.
+ function legalNFLCounts(counts){return counts.QB===1&&counts.RB>=1&&counts.WR>=2&&counts.TE>=1&&Object.values(counts).reduce((a,b)=>a+b,0)===6}
+ function legalNFLRoster(players){
+  if(players.length!==6)return false;
+  const counts={QB:0,RB:0,WR:0,TE:0};
+  for(const p of players){if(!Object.hasOwn(counts,p.pos))return false;counts[p.pos]++}
+  return legalNFLCounts(counts)&&new Set(players.map(p=>norm(p.name))).size===6;
+ }
  function resolveRoster(players,pool,sport=''){
   const src=players||[],sportName=clean(sport||src.find(x=>x?.sport)?.sport||'').toUpperCase();
   const base=src.map(p=>resolve({...p,sport:p.sport||sportName},pool));
   if(sportName!=='NFL'||src.length!==6)return base;
-  const need={QB:1,RB:2,WR:2,TE:1},positions=new Set(Object.keys(need));
+  const max={QB:1,RB:2,WR:3,TE:2},positions=new Set(Object.keys(max));
   const options=src.map((raw,i)=>{
    if(!base[i].unresolved&&positions.has(base[i].pos))return [base[i]];
    const hits=candidates({...raw,sport:raw.sport||sportName},pool).filter(x=>positions.has(x.pos));
@@ -80,10 +88,10 @@
   const order=[0,1,2,3,4,5].sort((a,b)=>options[a].length-options[b].length),solutions=[],chosen=Array(6),counts={QB:0,RB:0,WR:0,TE:0},used=new Set();
   const walk=depth=>{
    if(solutions.length>=256)return;
-   if(depth===order.length){if(Object.keys(need).every(p=>counts[p]===need[p]))solutions.push(chosen.slice());return}
+   if(depth===order.length){if(legalNFLCounts(counts))solutions.push(chosen.slice());return}
    const idx=order[depth];
    for(const pick of options[idx]){
-    const pos=pick.pos,key=norm(pick.name);if(!positions.has(pos)||counts[pos]>=need[pos]||used.has(key))continue;
+    const pos=pick.pos,key=norm(pick.name);if(!positions.has(pos)||counts[pos]>=max[pos]||used.has(key))continue;
     counts[pos]++;used.add(key);chosen[idx]=pick;walk(depth+1);used.delete(key);counts[pos]--;
    }
   };
@@ -127,6 +135,6 @@
   const stable=new Set(out.map(d=>JSON.stringify([d.sport,d.contest,...d.players.map(p=>norm(p.name)).sort()])));
   for(const [k,d]of synthetic)if(!stable.has(k))out.push(d);return out;
  }
- const api={clean,norm,aliases,NONE,nflPeriod,contestWeek,currentContest,currentDrafts,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,sameRoster,label,officialCount,displayDrafts};
+ const api={clean,norm,aliases,NONE,nflPeriod,contestWeek,currentContest,currentDrafts,scopeKey,sameScope,matchesScope,player,catalog,candidates,resolve,resolveRoster,legalNFLRoster,sameRoster,label,officialCount,displayDrafts};
  root.NukeExposure=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

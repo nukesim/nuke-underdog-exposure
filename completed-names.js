@@ -50,8 +50,7 @@ function readDetail(pool,sport='NFL'){
    groups.get(panel).set(norm(p.name),{...p,name,pos,teamAbbr:game[1].toUpperCase(),identitySource:'completed-detail',unresolved:false});break;
   }
  }
- const legal=players=>{const n={QB:0,RB:0,WR:0,TE:0};players.forEach(p=>n[p.pos]++);return players.length===6&&n.QB===1&&n.RB===2&&n.WR===2&&n.TE===1};
- return [...groups.values()].map(m=>[...m.values()]).filter(legal).sort((a,b)=>b.length-a.length)[0]||[];
+ return [...groups.values()].map(m=>[...m.values()]).filter(Core.legalNFLRoster).sort((a,b)=>b.length-a.length)[0]||[];
 }
 const signature=players=>players.map(p=>norm(p.name)).sort().join('|');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));

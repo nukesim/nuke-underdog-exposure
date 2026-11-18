@@ -41,10 +41,14 @@ test('Week 5 completed six-player rosters resolve ambiguous surname cards from r
  assert.deepEqual(ds[1].players.map(p=>p.name),['Amon-Ra St. Brown','Brock Bowers',"Ja'Marr Chase",'Jeremiyah Love',"D'Andre Swift",'Jayden Daniels']);
  assert.ok(ds.flatMap(d=>d.players).every(p=>!p.unresolved));
 });
-test('current-week surname cards resolve Pickens and roster-constrained Henry',()=>{
+test('current-week surname cards resolve Pickens and require position evidence for either legal Henry FLEX',()=>{
  assert.equal(Core.resolve({name:'Pickens',sport:'NFL'},pool).name,'George Pickens');
  assert.equal(Core.resolve({name:'Walker III',sport:'NFL'},pool).name,'Kenneth Walker III');
  const roster=['Brady Cook','Lucky Jackson','Amon-Ra St. Brown','Brock Bowers','Henry','Walker III'].map(name=>({name,sport:'NFL'}));
+ // Derrick (RB FLEX) and Hunter (TE FLEX) both form legal lineups.
+ const ambiguous=Core.resolveRoster(roster,pool,'NFL');
+ assert.equal(ambiguous[4].name,'Henry');assert.equal(ambiguous[4].unresolved,true);
+ roster[4].pos='RB';
  const resolved=Core.resolveRoster(roster,pool,'NFL');
  assert.deepEqual(resolved.map(p=>p.name),['Brady Cook','Lucky Jackson','Amon-Ra St. Brown','Brock Bowers','Derrick Henry','Kenneth Walker III']);
  assert.ok(resolved.every(p=>!p.unresolved));

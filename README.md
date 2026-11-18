@@ -2,6 +2,13 @@
 
 Chrome extension for tracking daily draft exposure by sport and tournament.
 
+## v0.9.27
+
+- Fixed completed-entry full-name capture for WR and TE FLEX lineups. All three six-player NFL builds now use the same roster validation.
+- Josh Allen and other ambiguous surnames are verified from the selected full roster and included in popup exposure and live badges. Existing entries are repaired when Completed is reopened.
+- Empty search results now say no players or combos match, while preserving the captured draft totals.
+- Added regressions for all FLEX builds, selected-entry repair, 1/10 popup and live exposure, and shared surnames.
+
 ## v0.9.25
 
 - Aligned live exposure and prior-core badges in the empty space before the native stat columns. Player names and matchups retain their original spacing and row height.

@@ -58,11 +58,11 @@ function playerStats(ds){
  return [...m.values()].map(x=>({...x,pct:ds.length?100*x.count/ds.length:0})).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))
 }
 function comboStats(ds){const m=new Map();ds.forEach(d=>{const n=[...new Set((d.players||[]).map(p=>displayName(p)).filter(Boolean))].sort();for(let i=0;i<n.length;i++)for(let j=i+1;j<n.length;j++){const k=n[i]+" + "+n[j];m.set(k,(m.get(k)||0)+1)}});return [...m].map(([name,count])=>({name,count,pct:ds.length?100*count/ds.length:0})).sort((a,b)=>b.pct-a.pct||a.name.localeCompare(b.name))}
-function empty(){return '<div class="empty">No completed drafts captured for this scope yet.</div>'}
+function empty(message='No completed drafts captured for this scope yet.'){return `<div class="empty">${esc(message)}</div>`}
 function render(){
  const ds=filtered(),ps=playerStats(ds),cs=comboStats(ds);$("draftCount").textContent=ds.length;$("playerCount").textContent=ps.length;$("comboCount").textContent=cs.length;const q=$("search").value.toLowerCase();
  if(activeTab==="drafts"){$("view").innerHTML=ds.length?ds.map(d=>`<div class="row"><div><b>${esc(d.contest)}</b><br><small>${esc((d.players||[]).map(p=>displayName(p)).filter(Boolean).join(", ")+(d.players.some(p=>!displayName(p))?' · Full names syncing…':''))}</small></div><div></div><div class="num">${new Date(d.capturedAt).toLocaleDateString()}</div></div>`).join(""):empty();return}
- const rows=(activeTab==="players"?ps:cs).filter(x=>x.name.toLowerCase().includes(q));$("view").innerHTML=rows.length?rows.map(x=>`<div class="row"><div><b>${esc(x.name)}</b><div class="bar"><i style="width:${Math.min(100,x.pct)}%"></i></div></div><div class="num">${x.count}/${ds.length}</div><div class="pct">${x.pct.toFixed(1)}%</div></div>`).join(""):empty()
+ const rows=(activeTab==="players"?ps:cs).filter(x=>x.name.toLowerCase().includes(q));$("view").innerHTML=rows.length?rows.map(x=>`<div class="row"><div><b>${esc(x.name)}</b><div class="bar"><i style="width:${Math.min(100,x.pct)}%"></i></div></div><div class="num">${x.count}/${ds.length}</div><div class="pct">${x.pct.toFixed(1)}%</div></div>`).join(""):!ds.length?empty():q?empty(`No ${activeTab} match your search.`):empty(pendingNames(ds)?'Full names are syncing. Reopen Completed to finish the roster scan.':`No ${activeTab} captured for this scope yet.`)
 }
 async function readStorage(scopeOverride=null){
  const d=await chrome.storage.local.get({drafts:[],exposureScope:{sport:"ALL",contest:Core.NONE},lastSelectedContest:Core.NONE,playerUniverse:{},officialExposure:{},knownTournaments:[],activePageScope:null});
